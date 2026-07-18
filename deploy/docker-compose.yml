@@ -1,0 +1,21 @@
+# 5分ライブを常時稼働させる。常時稼働の箱で:
+#   cd deploy && docker compose up -d
+# → ポーラー(5分)+現況ボードが動き続け、http://127.0.0.1:8501/ で見られる。
+#
+# 既定は 127.0.0.1 束縛(=そのホスト内 or トンネル経由のみ)。取得データは私的利用の
+# 範囲(CLAUDE.md)なので公開しない。スマホから見るには Tailscale 等で自分だけ到達する
+# (deploy/README.md 参照)。公開したい場合だけ ports を "0.0.0.0:8501:8501" に変える。
+services:
+  sabotage:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    image: sabotage:latest
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8501:8501"
+    volumes:
+      - sabotage-data:/data
+
+volumes:
+  sabotage-data:

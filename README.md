@@ -142,6 +142,18 @@ sabotage-poll --loop --db data/sabotage.db
 streamlit run src/sabotage/viz/board.py -- --db data/sabotage.db
 ```
 
+#### 常時稼働で5分ライブ(VPS / 自宅Pi)
+
+24時間動かして「5分ライブのURL(自分だけ)」にするなら [`deploy/`](deploy/README.md) の
+Docker / systemd 一式を使う。常時稼働の箱で `docker compose up -d` するだけ:
+
+```bash
+cd deploy && docker compose up -d      # ポーラー(5分)+ボードが常駐、127.0.0.1:8501
+```
+
+スマホからは Tailscale 等で自分だけ到達する(公開はしない)。詳細は
+[deploy/README.md](deploy/README.md)。
+
 ### テスト
 
 ネットワーク非依存。ThemeParks.wiki の**実レスポンス形状**に基づくフィクスチャで駆動する

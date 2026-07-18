@@ -1,0 +1,25 @@
+# Docker を使わない常時稼働(Raspberry Pi / Linux サーバー)向け systemd ユーザーユニット。
+#
+# セットアップ:
+#   pip install --user -e '.[viz]'           # このユニットを置く環境に sabotage を入れる
+#   mkdir -p ~/.config/systemd/user
+#   cp deploy/sabotage.service ~/.config/systemd/user/
+#   loginctl enable-linger "$USER"           # ログアウト後も動かす
+#   systemctl --user daemon-reload
+#   systemctl --user enable --now sabotage
+#   # → http://127.0.0.1:8501/(スマホからは Tailscale 等で。deploy/README.md 参照)
+#
+# ログ: journalctl --user -u sabotage -f
+[Unit]
+Description=sabotage 5分ライブ(ポーラー + 現況ボード)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+# %h = ホームディレクトリ。DB はホーム配下に永続化。
+ExecStart=%h/.local/bin/sabotage-mobile --db %h/sabotage/sabotage.db --address 0.0.0.0 --port 8501 --interval 300 --jitter 45
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=default.target
