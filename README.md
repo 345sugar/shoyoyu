@@ -111,16 +111,36 @@ streamlit run src/sabotage/viz/board.py -- --db data/sabotage.db
 ```
 
 **当日リアルタイムに使うには**、同じ DB に実データが5分ごとに入り続けている必要がある。
-本命の5分間隔ポーラー([実装済み](#phase-0-データフライホイール))を、スマホや常時稼働機で
-回して board を同じ DB に向ける:
+
+#### スマホ一台で動かす(Android / Termux)
+
+`sabotage-mobile` が **ポーラー(5分+ジッター)と現況ボードを同時に起動**し、同じ SQLite を
+共有する(WAL なので書き込み中でも読める)。停止時はプロセスグループごと畳むので孤児が残らない。
 
 ```bash
-sabotage-poll --loop --db data/sabotage.db          # 端末側で常時稼働(5分+ジッター)
-streamlit run src/sabotage/viz/board.py -- --db data/sabotage.db
+# Termux(Android)での初回セットアップ
+pkg install python git
+git clone https://github.com/345sugar/shoyoyu && cd shoyoyu
+pip install -e '.[viz]'
+
+# 起動(これ1つ)
+sabotage-mobile --db data/sabotage.db
+# → 端末のブラウザで http://localhost:8501/ を開く。Ctrl-C(音量下+C)で両方停止。
 ```
 
-> 間隔は CLAUDE.md 準拠の **5分以上**(1分間隔は非公式APIへの礼儀・規約に反するため不可)。
-> 公開ホスティングは「取得データは私的利用の範囲」に留めるため避け、自分の端末で見る。
+> - 間隔は CLAUDE.md 準拠の **5分以上**(1分間隔は非公式APIへの礼儀・規約に反するため不可)。
+> - `localhost` 束縛・非公開(「取得データは私的利用の範囲」)。自分の端末でのみ見る。
+> - iOS はバックグラウンド常駐が難しく非推奨。常時稼働は Android/Termux か、自宅PC/VPSで
+>   `sabotage-poll --loop` を回して端末からボードだけ見る構成が安定。
+> - 補足: Termux で pandas/streamlit の導入が重い場合は `pkg install python-numpy` 等の
+>   プリビルドを併用する。
+
+手動で別々に起動することもできる:
+
+```bash
+sabotage-poll --loop --db data/sabotage.db
+streamlit run src/sabotage/viz/board.py -- --db data/sabotage.db
+```
 
 ### テスト
 
