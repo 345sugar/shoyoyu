@@ -1,0 +1,198 @@
+{
+  "id": "3cc919f1-d16d-43e0-8c3f-1dd269bd1a42",
+  "name": "Tokyo Disneyland",
+  "entityType": "PARK",
+  "timezone": "Asia/Tokyo",
+  "liveData": [
+    {
+      "id": "a1b2c3d4-0001-4a5b-8169-000000000001",
+      "name": "Pooh's Hunny Hunt",
+      "entityType": "ATTRACTION",
+      "parkId": "3cc919f1-d16d-43e0-8c3f-1dd269bd1a42",
+      "externalId": "1;entityType=Attraction",
+      "queue": {
+        "STANDBY": {
+          "waitTime": 45
+        }
+      },
+      "status": "OPERATING",
+      "operatingHours": [
+        {
+          "type": "Operating",
+          "endTime": "2026-07-18T21:00:00+09:00",
+          "startTime": "2026-07-18T09:00:00+09:00"
+        }
+      ],
+      "lastUpdated": "2026-07-18T05:20:00Z"
+    },
+    {
+      "id": "a1b2c3d4-0002-4a5b-8169-000000000002",
+      "name": "Western River Railroad",
+      "entityType": "ATTRACTION",
+      "parkId": "3cc919f1-d16d-43e0-8c3f-1dd269bd1a42",
+      "externalId": "2;entityType=Attraction",
+      "queue": {
+        "STANDBY": {
+          "waitTime": 5
+        }
+      },
+      "status": "OPERATING",
+      "lastUpdated": "2026-07-18T05:20:00Z"
+    },
+    {
+      "id": "a1b2c3d4-0003-4a5b-8169-000000000003",
+      "name": "Splash Mountain",
+      "entityType": "ATTRACTION",
+      "parkId": "3cc919f1-d16d-43e0-8c3f-1dd269bd1a42",
+      "externalId": "3;entityType=Attraction",
+      "queue": {
+        "STANDBY": {
+          "waitTime": null
+        }
+      },
+      "status": "DOWN",
+      "operatingHours": [
+        {
+          "type": "Operating",
+          "endTime": "2026-07-18T21:00:00+09:00",
+          "startTime": "2026-07-18T09:00:00+09:00"
+        }
+      ],
+      "lastUpdated": "2026-07-18T05:18:30Z"
+    },
+    {
+      "id": "a1b2c3d4-0004-4a5b-8169-000000000004",
+      "name": "Space Mountain",
+      "entityType": "ATTRACTION",
+      "parkId": "3cc919f1-d16d-43e0-8c3f-1dd269bd1a42",
+      "externalId": "4;entityType=Attraction",
+      "status": "REFURBISHMENT",
+      "operatingHours": [],
+      "lastUpdated": "2026-06-01T00:00:00Z"
+    },
+    {
+      "id": "a1b2c3d4-0005-4a5b-8169-000000000005",
+      "name": "Big Thunder Mountain",
+      "entityType": "ATTRACTION",
+      "parkId": "3cc919f1-d16d-43e0-8c3f-1dd269bd1a42",
+      "externalId": "5;entityType=Attraction",
+      "queue": {
+        "STANDBY": {
+          "waitTime": null
+        },
+        "RETURN_TIME": {
+          "state": "AVAILABLE",
+          "returnEnd": null,
+          "returnStart": "2026-07-18T15:40:00+09:00"
+        }
+      },
+      "status": "CLOSED",
+      "forecast": [
+        {
+          "time": "2026-07-18T09:00:00+09:00",
+          "waitTime": 20,
+          "percentage": 17
+        },
+        {
+          "time": "2026-07-18T14:00:00+09:00",
+          "waitTime": 55,
+          "percentage": 47
+        }
+      ],
+      "operatingHours": [
+        {
+          "type": "Operating",
+          "endTime": "2026-07-18T21:00:00+09:00",
+          "startTime": "2026-07-18T09:00:00+09:00"
+        }
+      ],
+      "lastUpdated": "2026-07-18T05:15:00Z"
+    },
+    {
+      "id": "a1b2c3d4-0006-4a5b-8169-000000000006",
+      "name": "Enchanted Tale of Beauty and the Beast",
+      "entityType": "ATTRACTION",
+      "parkId": "3cc919f1-d16d-43e0-8c3f-1dd269bd1a42",
+      "externalId": "6;entityType=Attraction",
+      "queue": {
+        "STANDBY": {
+          "waitTime": 120
+        },
+        "PAID_RETURN_TIME": {
+          "price": {
+            "amount": 2000,
+            "currency": "JPY",
+            "formatted": "¥2,000"
+          },
+          "state": "AVAILABLE",
+          "returnEnd": "2026-07-18T16:00:00+09:00",
+          "returnStart": "2026-07-18T15:30:00+09:00"
+        }
+      },
+      "status": "OPERATING",
+      "lastUpdated": "2026-07-18T05:20:00Z"
+    },
+    {
+      "id": "a1b2c3d4-0007-4a5b-8169-000000000007",
+      "name": "Queen of Hearts Banquet Hall",
+      "entityType": "RESTAURANT",
+      "parkId": "3cc919f1-d16d-43e0-8c3f-1dd269bd1a42",
+      "externalId": "7;entityType=restaurant",
+      "queue": {
+        "STANDBY": {
+          "waitTime": null
+        }
+      },
+      "status": "OPERATING",
+      "lastUpdated": "2026-07-18T05:10:00Z"
+    },
+    {
+      "id": "a1b2c3d4-0008-4a5b-8169-000000000008",
+      "name": "Tokyo Disneyland Electrical Parade Dreamlights",
+      "entityType": "SHOW",
+      "parkId": "3cc919f1-d16d-43e0-8c3f-1dd269bd1a42",
+      "externalId": "8;entityType=Entertainment",
+      "status": "OPERATING",
+      "showtimes": [
+        {
+          "type": "Performance Time",
+          "endTime": "2026-07-18T19:30:00+09:00",
+          "startTime": "2026-07-18T19:00:00+09:00"
+        },
+        {
+          "type": "Performance Time",
+          "endTime": "2026-07-18T20:45:00+09:00",
+          "startTime": "2026-07-18T20:15:00+09:00"
+        }
+      ],
+      "lastUpdated": "2026-07-18T05:00:00Z"
+    },
+    {
+      "id": "a1b2c3d4-0009-4a5b-8169-000000000009",
+      "name": "Haunted Mansion",
+      "entityType": "ATTRACTION",
+      "parkId": "3cc919f1-d16d-43e0-8c3f-1dd269bd1a42",
+      "externalId": "9;entityType=Attraction",
+      "queue": {
+        "STANDBY": {
+          "waitTime": 20
+        }
+      },
+      "lastUpdated": "2026-07-18T05:20:00Z"
+    },
+    {
+      "id": "3cc919f1-d16d-43e0-8c3f-1dd269bd1a42",
+      "name": "Tokyo Disneyland",
+      "entityType": "PARK",
+      "parkId": null,
+      "externalId": "tdl;entityType=theme-park",
+      "queue": {
+        "STANDBY": {
+          "waitTime": null
+        }
+      },
+      "status": "OPERATING",
+      "lastUpdated": "2026-07-18T05:20:00Z"
+    }
+  ]
+}

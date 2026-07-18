@@ -1,0 +1,55 @@
+{
+  "id": "67b290d5-3478-4f23-b601-2f8fb71ba803",
+  "name": "Tokyo DisneySea",
+  "entityType": "PARK",
+  "timezone": "Asia/Tokyo",
+  "liveData": [
+    {
+      "id": "b2c3d4e5-0001-4a5b-8169-000000000001",
+      "name": "Soaring: Fantastic Flight",
+      "entityType": "ATTRACTION",
+      "parkId": "67b290d5-3478-4f23-b601-2f8fb71ba803",
+      "externalId": "101;entityType=Attraction",
+      "queue": {
+        "STANDBY": {
+          "waitTime": 90
+        }
+      },
+      "status": "OPERATING",
+      "lastUpdated": "2026-07-18T05:20:00Z"
+    },
+    {
+      "id": "b2c3d4e5-0002-4a5b-8169-000000000002",
+      "name": "Tower of Terror",
+      "entityType": "ATTRACTION",
+      "parkId": "67b290d5-3478-4f23-b601-2f8fb71ba803",
+      "externalId": "102;entityType=Attraction",
+      "queue": {
+        "STANDBY": {
+          "waitTime": null
+        }
+      },
+      "status": "DOWN",
+      "lastUpdated": "2026-07-18T05:19:00Z"
+    },
+    {
+      "id": "b2c3d4e5-0003-4a5b-8169-000000000003",
+      "name": "Toy Story Mania!",
+      "entityType": "ATTRACTION",
+      "parkId": "67b290d5-3478-4f23-b601-2f8fb71ba803",
+      "externalId": "103;entityType=Attraction",
+      "queue": {
+        "STANDBY": {
+          "waitTime": 75
+        },
+        "RETURN_TIME": {
+          "state": "AVAILABLE",
+          "returnEnd": null,
+          "returnStart": "2026-07-18T16:20:00+09:00"
+        }
+      },
+      "status": "OPERATING",
+      "lastUpdated": "2026-07-18T05:20:00Z"
+    }
+  ]
+}
