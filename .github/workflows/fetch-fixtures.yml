@@ -17,8 +17,11 @@ name: fetch-fixtures
 on:
   workflow_dispatch:
 
+# 採取した実JSONを captured-fixtures ブランチへ push するため書き込み権限が要る。
+# (開発サンドボックスは artifacts の Azure ダウンロードURLに egress で出られないため、
+#  git 経由で受け渡す。git リモートはプロキシ経由で到達できる。)
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   fetch:
@@ -30,6 +33,9 @@ jobs:
       TDS_ID: "67b290d5-3478-4f23-b601-2f8fb71ba803"
       OUT: captured
     steps:
+      - name: Checkout (for pushing captured JSON to a branch)
+        uses: actions/checkout@v4
+
       - name: Prepare output dir
         run: mkdir -p "$OUT"
 
@@ -109,3 +115,19 @@ jobs:
           path: ${{ env.OUT }}/
           retention-days: 14
           if-no-files-found: warn
+
+      # 採取物を専用ブランチへ force-push する。artifacts の Azure ダウンロードURLに
+      # 出られない環境でも、git 経由なら実JSONを受け取れる。captured-fixtures は
+      # 使い捨ての受け渡し用ブランチ(毎回上書き)。
+      - name: Publish captured JSON to captured-fixtures branch
+        if: always()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          mkdir -p captured_out
+          cp "$OUT"/*.json "$OUT"/*.txt captured_out/ 2>/dev/null || true
+          git add -f captured_out
+          git commit -m "captured real API fixtures (run ${{ github.run_id }})" \
+            || { echo "nothing captured to commit"; exit 0; }
+          git push -f origin "HEAD:refs/heads/captured-fixtures"
+          echo "pushed captured JSON to branch: captured-fixtures"
