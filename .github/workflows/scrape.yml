@@ -1,0 +1,60 @@
+name: scrape
+
+# 暫定フライホイール(git scraping)。常時稼働マシンが用意できるまでの繋ぎ。
+# 毎時、両パークの /live を1回取得し、生JSONを NDJSON として `data` ブランチへ追記する。
+# 後日、本命の5分間隔ポーラーへ移行する際、この git 履歴から `sabotage-backfill` で
+# SQLite を一括再構築できる。
+#
+# 礼儀(CLAUDE.md データ倫理):User-Agent 明示(config.USER_AGENT)、間隔は1時間固定
+# (非公式API負荷と Actions 無料枠の両面から)、私的利用の範囲。
+#
+# 前提: `data` ブランチが存在すること(orphan・データ専用)。無ければ最初に一度だけ作る。
+
+on:
+  schedule:
+    - cron: "0 * * * *"   # 毎時0分(UTC)。1時間固定。
+  workflow_dispatch:        # 手動実行(動作確認用)。
+
+# 実行が重ならないように直列化(前の run が終わるまで新しい run は待つ)。
+concurrency:
+  group: scrape
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code (main)
+        uses: actions/checkout@v5
+
+      - name: Checkout data branch
+        uses: actions/checkout@v5
+        with:
+          ref: data
+          path: data-branch
+
+      # setup-python を使わず、ランナー同梱の python3 + venv で入れる
+      # (追加アクションを増やさない = Node 非推奨の警告も出さない)。
+      - name: Install package
+        run: |
+          python3 -m venv .venv
+          .venv/bin/pip install --quiet -e .
+
+      - name: Scrape into data branch
+        run: .venv/bin/python -m sabotage.tools.scrape --out data-branch/data
+
+      - name: Commit & push to data branch
+        working-directory: data-branch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data
+          if git diff --cached --quiet; then
+            echo "no changes to commit"
+            exit 0
+          fi
+          git commit -m "scrape $(date -u +%FT%TZ)"
+          git push origin HEAD:data
