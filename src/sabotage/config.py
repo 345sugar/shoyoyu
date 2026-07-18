@@ -39,9 +39,11 @@ class Park:
     name: str
 
 
-# 東京ディズニーリゾートの2パーク(実APIの /destinations 実形状から確認済み)。
+# 東京ディズニーリゾートの2パーク(実APIの /destinations 実応答から確認済み)。
 # 発見に失敗した場合のフォールバック。roadmap の TDL ID と一致する。
-TOKYO_DESTINATION_SLUG = "tokyodisneyresort"
+# 実APIの destination slug は "tdr"(公式ライブラリの過去キャプチャは
+# "tokyodisneyresort" だったが、ライブは "tdr")。発見は slug と名前の両方で照合する。
+TOKYO_DESTINATION_SLUG = "tdr"
 DEFAULT_PARKS: tuple[Park, ...] = (
     Park(park_id="3cc919f1-d16d-43e0-8c3f-1dd269bd1a42", name="Tokyo Disneyland"),
     Park(park_id="67b290d5-3478-4f23-b601-2f8fb71ba803", name="Tokyo DisneySea"),

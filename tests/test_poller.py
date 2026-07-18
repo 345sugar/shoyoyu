@@ -41,8 +41,8 @@ def test_run_once_success_writes_snapshots_and_observations(tmp_path):
     assert results[TDS] == "ok"
     with Storage(tmp_path / "s.db") as st:
         assert st.count("snapshots") == 2
-        # TDL 10観測 + TDS 3観測。
-        assert st.count("observations") == 13
+        # 実データ:TDL 37観測 + TDS 34観測。
+        assert st.count("observations") == 71
         # FETCH_FAILED は無い。
         n_failed = st.connection.execute(
             "SELECT COUNT(*) FROM observations WHERE status=?", (STATUS_FETCH_FAILED,)
@@ -246,4 +246,4 @@ def test_main_once_end_to_end(tmp_path, monkeypatch):
 
     with Storage(db) as st:
         assert st.count("snapshots") == 2
-        assert st.count("observations") == 13
+        assert st.count("observations") == 71
