@@ -1,0 +1,16 @@
+# SQLite 蓄積(生成物。コミットしない)。ルート直下の data/ のみ。
+# src/sabotage/data/ はパッケージなので誤って無視しないよう先頭スラッシュで固定。
+/data/
+*.db
+*.db-wal
+*.db-shm
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+build/
+dist/
+.venv/
+venv/
