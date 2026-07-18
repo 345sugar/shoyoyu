@@ -1,0 +1,111 @@
+name: fetch-fixtures
+
+# 実APIから生レスポンスを採取して artifacts に保存するだけの手動ワークフロー。
+#
+# 背景: 開発サンドボックスからは egress ポリシーで実API(api.themeparks.wiki /
+# queue-times.com)に出られない。そこで GitHub Actions のランナーから一度だけ叩き、
+# 取れた実JSONをダウンロードして tests/fixtures/ と正規化を「実物」に合わせて更新する。
+#
+# 礼儀(CLAUDE.md データ倫理):User-Agent 明示、低頻度(手動のみ)、私的利用の範囲。
+# Queue-Times のデータを画面表示に使う場合は "Powered by Queue-Times.com" 表記+リンク必須
+# (このワークフローは採取のみで表示はしない)。
+#
+# 注意: workflow_dispatch の「Run workflow」ボタンは、ワークフローファイルが
+# デフォルトブランチ(main)に存在して初めて Actions UI に現れる。フィーチャーブランチ
+# のままだと出ないことがあるので、その場合は先に main へ取り込むこと。
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    env:
+      # config.py の USER_AGENT と揃える。
+      UA: "sabotage-poller/0.1 (+https://github.com/345sugar/shoyoyu; personal-use)"
+      TDL_ID: "3cc919f1-d16d-43e0-8c3f-1dd269bd1a42"
+      TDS_ID: "67b290d5-3478-4f23-b601-2f8fb71ba803"
+      OUT: captured
+    steps:
+      - name: Prepare output dir
+        run: mkdir -p "$OUT"
+
+      # curl は失敗しても body を残し、ジョブは止めない(部分採取でも artifacts にしたい)。
+      # HTTP ステータスは status_*.txt に記録して欠測かどうか後から分かるようにする。
+      - name: Fetch ThemeParks.wiki /destinations
+        continue-on-error: true
+        run: |
+          code=$(curl -sS --retry 3 --retry-delay 3 -A "$UA" \
+            -H 'Accept: application/json' \
+            -w '%{http_code}' \
+            -o "$OUT/themeparks_destinations.json" \
+            "https://api.themeparks.wiki/v1/destinations") || code="000"
+          echo "$code" > "$OUT/status_themeparks_destinations.txt"
+          echo "HTTP $code (destinations)"
+          head -c 400 "$OUT/themeparks_destinations.json" || true; echo
+
+      - name: Be polite (jitter)
+        run: sleep 5
+
+      - name: Fetch ThemeParks.wiki Tokyo Disneyland /live
+        continue-on-error: true
+        run: |
+          code=$(curl -sS --retry 3 --retry-delay 3 -A "$UA" \
+            -H 'Accept: application/json' \
+            -w '%{http_code}' \
+            -o "$OUT/themeparks_tdl_live.json" \
+            "https://api.themeparks.wiki/v1/entity/$TDL_ID/live") || code="000"
+          echo "$code" > "$OUT/status_themeparks_tdl_live.txt"
+          echo "HTTP $code (TDL live)"
+          head -c 400 "$OUT/themeparks_tdl_live.json" || true; echo
+
+      - name: Be polite (jitter)
+        run: sleep 5
+
+      - name: Fetch ThemeParks.wiki Tokyo DisneySea /live
+        continue-on-error: true
+        run: |
+          code=$(curl -sS --retry 3 --retry-delay 3 -A "$UA" \
+            -H 'Accept: application/json' \
+            -w '%{http_code}' \
+            -o "$OUT/themeparks_tds_live.json" \
+            "https://api.themeparks.wiki/v1/entity/$TDS_ID/live") || code="000"
+          echo "$code" > "$OUT/status_themeparks_tds_live.txt"
+          echo "HTTP $code (TDS live)"
+          head -c 400 "$OUT/themeparks_tds_live.json" || true; echo
+
+      - name: Be polite (jitter)
+        run: sleep 5
+
+      # Queue-Times は突合・冗長化用(roadmap のサブ)。ここでは parks.json のみ採取。
+      - name: Fetch Queue-Times parks.json
+        continue-on-error: true
+        run: |
+          code=$(curl -sS --retry 3 --retry-delay 3 -A "$UA" \
+            -H 'Accept: application/json' \
+            -w '%{http_code}' \
+            -o "$OUT/queue_times_parks.json" \
+            "https://queue-times.com/parks.json") || code="000"
+          echo "$code" > "$OUT/status_queue_times_parks.txt"
+          echo "HTTP $code (queue-times parks)"
+          head -c 400 "$OUT/queue_times_parks.json" || true; echo
+
+      - name: Summary
+        run: |
+          echo "== captured files =="
+          ls -la "$OUT" || true
+          echo "== byte sizes =="
+          wc -c "$OUT"/*.json || true
+          echo "== HTTP statuses =="
+          for f in "$OUT"/status_*.txt; do echo "$(cat "$f")  $f"; done || true
+
+      - name: Upload captured fixtures
+        uses: actions/upload-artifact@v4
+        with:
+          name: sabotage-captured-fixtures-${{ github.run_id }}
+          path: ${{ env.OUT }}/
+          retention-days: 14
+          if-no-files-found: warn
