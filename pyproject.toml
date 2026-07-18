@@ -25,6 +25,8 @@ viz = [
 [project.scripts]
 sabotage-poll = "sabotage.data.poller:main"
 sabotage-seed-demo = "sabotage.tools.seed_demo:main"
+sabotage-scrape = "sabotage.tools.scrape:main"
+sabotage-backfill = "sabotage.tools.backfill:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

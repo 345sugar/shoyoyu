@@ -1,4 +1,8 @@
-"""正規化ロジックのテスト。実形状フィクスチャ(tdl_live.json)で回す。"""
+"""正規化ロジックのテスト。実APIから採取した実データ(tdl_live.json)で回す。
+
+フィクスチャは GitHub Actions の fetch-fixtures ワークフローで採取した
+Tokyo Disneyland の /entity/{id}/live 実応答(2026-07-18 採取)。
+"""
 
 from __future__ import annotations
 
@@ -13,74 +17,55 @@ def _by_name(obs: list[Observation]) -> dict[str, Observation]:
     return {o.name: o for o in obs if o.name is not None}
 
 
-def test_normalize_tdl_counts_and_fields():
+def test_normalize_tdl_counts_all_attractions():
     payload = load_fixture_json("tdl_live.json")
     obs = normalize_live(PARK, payload)
 
-    # liveData は10要素。全て観測になる。
-    assert len(obs) == 10
+    # 実データ:37エンティティ、すべて ATTRACTION。
+    assert len(obs) == 37
     assert all(o.park_id == PARK for o in obs)
+    assert all(o.entity_type == "ATTRACTION" for o in obs)
+    # 実応答に現れた status の集合。
+    assert {o.status for o in obs} == {"OPERATING", "CLOSED", "DOWN"}
 
-    by_name = _by_name(obs)
+
+def test_normalize_operating_standby_int():
+    by_name = _by_name(normalize_live(PARK, load_fixture_json("tdl_live.json")))
 
     # OPERATING + STANDBY 整数待ち時間。
-    assert by_name["Pooh's Hunny Hunt"].status == "OPERATING"
-    assert by_name["Pooh's Hunny Hunt"].wait_minutes == 45
-    assert by_name["Pooh's Hunny Hunt"].entity_type == "ATTRACTION"
-
-    # 谷(dip)も素直に取る。
-    assert by_name["Western River Railroad"].wait_minutes == 5
+    assert by_name["Mickey's PhilharMagic"].status == "OPERATING"
+    assert by_name["Mickey's PhilharMagic"].wait_minutes == 10
+    # この日一番の人気(実測)。
+    assert by_name["The Happy Ride with Baymax"].wait_minutes == 100
 
 
-def test_normalize_down_and_null_wait():
-    payload = load_fixture_json("tdl_live.json")
-    by_name = _by_name(normalize_live(PARK, payload))
+def test_normalize_down_has_empty_standby():
+    by_name = _by_name(normalize_live(PARK, load_fixture_json("tdl_live.json")))
 
-    # 停止:status=DOWN、STANDBY.waitTime=null → None。
-    splash = by_name["Splash Mountain"]
-    assert splash.status == "DOWN"
-    assert splash.wait_minutes is None
-
-
-def test_normalize_refurbishment_has_no_queue():
-    payload = load_fixture_json("tdl_live.json")
-    by_name = _by_name(normalize_live(PARK, payload))
-
-    # 改修中:queue キー自体が無い → wait_minutes None、KeyError を出さない。
-    space = by_name["Space Mountain"]
-    assert space.status == "REFURBISHMENT"
-    assert space.wait_minutes is None
+    # 停止:実APIは status=DOWN かつ queue.STANDBY が空 {}(waitTime キー自体が無い)。
+    # → wait_minutes は None(KeyError を出さない)。
+    omnibus = by_name["Omnibus"]
+    assert omnibus.status == "DOWN"
+    assert omnibus.wait_minutes is None
 
 
-def test_normalize_missing_status_is_none():
-    payload = load_fixture_json("tdl_live.json")
-    by_name = _by_name(normalize_live(PARK, payload))
+def test_normalize_closed_has_empty_standby():
+    by_name = _by_name(normalize_live(PARK, load_fixture_json("tdl_live.json")))
 
-    # status キーが無い要素でも落ちず、status=None・待ち時間は取れる。
-    hm = by_name["Haunted Mansion"]
-    assert hm.status is None
-    assert hm.wait_minutes == 20
+    pooh = by_name["Pooh's Hunny Hunt"]
+    assert pooh.status == "CLOSED"
+    assert pooh.wait_minutes is None
 
 
 def test_normalize_ignores_other_queue_types():
-    payload = load_fixture_json("tdl_live.json")
-    by_name = _by_name(normalize_live(PARK, payload))
+    by_name = _by_name(normalize_live(PARK, load_fixture_json("tdl_live.json")))
 
-    # PAID_RETURN_TIME を持つが、待ち時間は STANDBY のみを採用する。
-    beast = by_name["Enchanted Tale of Beauty and the Beast"]
-    assert beast.wait_minutes == 120
-
-
-def test_normalize_restaurant_and_show():
-    payload = load_fixture_json("tdl_live.json")
-    by_name = _by_name(normalize_live(PARK, payload))
-
-    assert by_name["Queen of Hearts Banquet Hall"].entity_type == "RESTAURANT"
-    assert by_name["Queen of Hearts Banquet Hall"].wait_minutes is None
-
-    parade = by_name["Tokyo Disneyland Electrical Parade Dreamlights"]
-    assert parade.entity_type == "SHOW"
-    assert parade.wait_minutes is None  # SHOW に queue は無い。
+    # RETURN_TIME を併せ持つが STANDBY のみ採用。
+    bigthunder = by_name["Big Thunder Mountain"]
+    assert bigthunder.wait_minutes == 50
+    # PAID_RETURN_TIME を併せ持つが STANDBY のみ採用。
+    splash = by_name["Splash Mountain"]
+    assert splash.wait_minutes == 40
 
 
 def test_normalize_defensive_on_bad_shapes():
@@ -98,7 +83,34 @@ def test_normalize_skips_non_dict_entries():
     assert obs[0].entity_id == "x"
 
 
+def test_normalize_missing_status_and_other_entity_types():
+    # 実TDL応答には無いが、実APIに存在する形(SHOW/RESTAURANT/status欠落)への防御。
+    # 形状は ThemeParks.wiki の実応答(Magic Kingdom 実キャプチャ)準拠。
+    payload = {
+        "liveData": [
+            {"id": "s1", "name": "Show A", "entityType": "SHOW",
+             "showtimes": [{"type": "Performance Time", "startTime": "2026-07-18T19:00:00+09:00"}]},
+            {"id": "r1", "name": "Rest A", "entityType": "RESTAURANT",
+             "queue": {"STANDBY": {"waitTime": None}}, "status": "OPERATING"},
+            {"id": "a1", "name": "Ride No Status", "entityType": "ATTRACTION",
+             "queue": {"STANDBY": {"waitTime": 20}}},
+            {"id": "a2", "name": "Refurb", "entityType": "ATTRACTION",
+             "status": "REFURBISHMENT", "operatingHours": []},
+        ]
+    }
+    by_name = _by_name(normalize_live(PARK, payload))
+    assert by_name["Show A"].entity_type == "SHOW"
+    assert by_name["Show A"].wait_minutes is None
+    assert by_name["Rest A"].wait_minutes is None  # STANDBY.waitTime=null
+    assert by_name["Ride No Status"].status is None  # status 欠落でも落ちない
+    assert by_name["Ride No Status"].wait_minutes == 20
+    assert by_name["Refurb"].status == "REFURBISHMENT"
+    assert by_name["Refurb"].wait_minutes is None  # queue 自体が無い
+
+
 def test_extract_standby_wait_type_guards():
+    # 実APIの停止時の形:STANDBY が空 {} → None。
+    assert _extract_standby_wait({"queue": {"STANDBY": {}}}) is None
     # bool は int のサブクラスだが待ち時間ではない。除外する。
     assert _extract_standby_wait({"queue": {"STANDBY": {"waitTime": True}}}) is None
     # float は int に丸める。

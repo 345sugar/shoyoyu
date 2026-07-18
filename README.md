@@ -54,6 +54,25 @@ cron 例(5分間隔):
 | `observations(ts, park_id, entity_id, name, entity_type, status, wait_minutes)` | 正規化済み |
 | `meta(key, value)` | 発見したパークIDのキャッシュ |
 
+## 暫定フライホイール(git scraping)
+
+本命の5分間隔ポーラーを常時稼働マシンで回すまでの繋ぎ。GitHub Actions の cron で
+**1時間ごと**に両パークの `/live` を1回取得し、生JSONを NDJSON として **`data` ブランチ**へ
+コミットする([`.github/workflows/scrape.yml`](.github/workflows/scrape.yml))。
+
+- 間隔は**1時間固定**(非公式APIへの礼儀 + Actions 無料枠)。User-Agent 明示。
+- 出力: `data/themeparks/live/<park_id>/<UTC日付>.ndjson`。1行 = 1スナップショット、
+  列は Phase 0 の `snapshots` と同型 `{ts, source, park_id, http_status, raw}`。
+- 取得失敗も `http_status:0` の行として残す(欠測は観測)。
+- **後日の移行**: 本命ポーラーへ切り替える際、この git 履歴を SQLite へバックフィルできる。
+
+```bash
+sabotage-scrape --out data                          # 1回取得して NDJSON へ追記(cron が毎時実行)
+sabotage-backfill --data data --db data/sabotage.db # NDJSON → SQLite(冪等。再実行で重複しない)
+```
+
+`data` ブランチはデータ専用の orphan ブランチ(コードは含まない)。`main` の履歴は汚さない。
+
 ## Phase 1: 可視化
 
 蓄積データを Streamlit で「雑に見る」。DoD は「ブラウザで**昨日の園内**が見える」。
