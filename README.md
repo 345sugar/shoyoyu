@@ -3,7 +3,7 @@
 東京ディズニーリゾートを「効率よくだらだら」過ごすためのAI執事。
 思想と原則は [CLAUDE.md](CLAUDE.md)、全体計画は [docs/roadmap.md](docs/roadmap.md) を参照。
 
-現在の実装状況: **Phase 0(データフライホイール)** — ポーラー + SQLite蓄積。
+現在の実装状況: **Phase 0(データフライホイール)** + **Phase 1(可視化)**。
 
 ## Phase 0: データフライホイール
 
@@ -53,6 +53,33 @@ cron 例(5分間隔):
 | `snapshots(ts, source, park_id, http_status, raw_json)` | 生レスポンスを丸ごと |
 | `observations(ts, park_id, entity_id, name, entity_type, status, wait_minutes)` | 正規化済み |
 | `meta(key, value)` | 発見したパークIDのキャッシュ |
+
+## Phase 1: 可視化
+
+蓄積データを Streamlit で「雑に見る」。DoD は「ブラウザで**昨日の園内**が見える」。
+
+- **待ち時間波形** — アトラクション別・1日分の折れ線
+- **曜日 × 時間帯ヒートマップ** — 全期間の平均待ち
+- **人圧マップ** — 待ち時間総和(=園内需要の相対指標)を全体+エリア別に。
+  停止・改修中のアトラクション一覧も併記(木鶏の材料)
+- 数字づくりは `analysis` 層(テスト済み純関数)、描画は `viz` 層(Streamlit)に分離
+
+```bash
+pip install -e '.[viz]'                       # 可視化の依存(streamlit/pandas/altair)
+streamlit run src/sabotage/viz/app.py -- --db data/sabotage.db
+```
+
+### 実データが無い環境向け:合成デモデータ
+
+実APIが遮断されている等でまだ実データが無い場合、**合成デモデータ**で可視化を試せる
+(⚠️ 本物の待ち時間ではない。`snapshots.source='demo-synthetic'` で区別・削除可能)。
+
+```bash
+sabotage-seed-demo --db data/sabotage.db --days 3   # 直近3日分の合成データを投入
+sabotage-seed-demo --db data/sabotage.db --purge    # 合成データだけ削除(実データは残る)
+```
+
+アプリ上部には合成データ表示中の警告バナーが出る。
 
 ### テスト
 

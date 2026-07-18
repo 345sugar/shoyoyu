@@ -14,10 +14,17 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
     "pytest>=8",
+    "pandas>=2.2",
+]
+viz = [
+    "pandas>=2.2",
+    "streamlit>=1.36",
+    "altair>=5",
 ]
 
 [project.scripts]
 sabotage-poll = "sabotage.data.poller:main"
+sabotage-seed-demo = "sabotage.tools.seed_demo:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
