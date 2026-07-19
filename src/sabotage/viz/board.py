@@ -27,15 +27,29 @@ from sabotage.tools.seed_demo import DEMO_SOURCE, META_DEMO_FLAG
 FRESH_LIMIT_MIN = 15  # これを超えて更新が無ければ「古い」警告。
 
 
+def _setting(key: str, default: str = "") -> str:
+    """設定を読む。Streamlit Cloud の Secrets(st.secrets)と OS 環境変数の両対応。
+
+    Streamlit Community Cloud は環境変数ではなく Secrets(st.secrets)で値を渡すため、
+    両方を見る(secrets.toml が無いローカルでは st.secrets アクセスが例外になるので握る)。
+    """
+    try:
+        if key in st.secrets:
+            return str(st.secrets[key])
+    except Exception:  # noqa: BLE001 — secrets 未設定など
+        pass
+    return os.environ.get(key, default)
+
+
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--db", default=os.environ.get("SABOTAGE_DB", DEFAULT_DB_PATH))
+    parser.add_argument("--db", default=_setting("SABOTAGE_DB", DEFAULT_DB_PATH))
     # --self-poll: このページ自身が裏で5分ごとに取得する(常時稼働の箱が無くても
     #   Streamlit Community Cloud 等の無料URLで5分ライブにできる)。
     parser.add_argument(
         "--self-poll",
         action="store_true",
-        default=os.environ.get("SABOTAGE_SELF_POLL", "").lower() in ("1", "true", "yes"),
+        default=_setting("SABOTAGE_SELF_POLL", "").lower() in ("1", "true", "yes"),
     )
     parser.add_argument("--interval", type=int, default=DEFAULT_INTERVAL_SECONDS)
     parser.add_argument("--jitter", type=int, default=DEFAULT_JITTER_SECONDS)
