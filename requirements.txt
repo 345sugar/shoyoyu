@@ -1,0 +1,3 @@
+# Streamlit Community Cloud 用。Cloud はこれを見て依存を入れる。
+# ローカル開発は `pip install -e '.[viz]'` を使う(こちらは Cloud 専用)。
+.[viz]

@@ -27,6 +27,8 @@ sabotage-poll = "sabotage.data.poller:main"
 sabotage-seed-demo = "sabotage.tools.seed_demo:main"
 sabotage-scrape = "sabotage.tools.scrape:main"
 sabotage-backfill = "sabotage.tools.backfill:main"
+sabotage-mobile = "sabotage.tools.mobile:main"
+sabotage-backtest = "sabotage.analysis.nowcast:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
