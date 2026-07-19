@@ -18,7 +18,7 @@ from pathlib import Path
 import pandas as pd
 import streamlit as st
 
-from sabotage.analysis import board, queries
+from sabotage.analysis import board, nowcast, queries
 from sabotage.config import DEFAULT_DB_PATH
 from sabotage.tools.seed_demo import DEMO_SOURCE, META_DEMO_FLAG
 
@@ -59,9 +59,22 @@ def _wait_text(status, wait) -> str:
     return f'<b style="font-size:1.5rem">{int(wait)}</b><span style="font-size:.8rem">分</span>'
 
 
+def _pred_text(r) -> str:
+    """到着時予測「着N分↗」。群衆補正込み。停止/予測不可なら空。"""
+    pw = r.get("pred_wait")
+    if pw is None or pd.isna(pw):
+        return ""
+    sig = r.get("signal")
+    color = {"混む": "#cf222e", "空く": "#1a7f37"}.get(sig, "#6e7781")
+    arrow = {"混む": "↗", "空く": "↘"}.get(sig, "→")
+    return f'<span style="color:{color};font-weight:600">着{int(pw)}分{arrow}</span>'
+
+
 def _row(r) -> str:
     left = _wait_text(r["status"], r["wait_minutes"])
-    meta = " · ".join(x for x in [r.get("area"), _fmt_delta(r.get("delta"))] if x)
+    meta = " · ".join(
+        x for x in [r.get("area"), _fmt_delta(r.get("delta")), _pred_text(r)] if x
+    )
     badge = _value_badge(r.get("value_label"))
     return (
         '<div style="display:flex;align-items:center;gap:.6rem;'
@@ -103,8 +116,12 @@ def render(db_path: str) -> None:
     park_id = st.radio(
         "パーク", parks, format_func=lambda p: names.get(p, p), horizontal=True
     )
+    arrival_min = st.slider(
+        "到着まで(分)", min_value=5, max_value=45, value=nowcast.DEFAULT_ARRIVAL_MIN, step=5,
+        help="今から何分後に着くか。到着時の待ち(群衆補正込み)を予測する。",
+    )
 
-    b = board.current_board(df[df["park_id"] == park_id], park_id)
+    b = nowcast.predict_board(df[df["park_id"] == park_id], park_id, arrival_min=arrival_min)
     if b.empty:
         st.info("このパークの現況データがありません。")
         return
@@ -122,6 +139,10 @@ def render(db_path: str) -> None:
     operating, stopped = board.split_operating(b)
 
     st.markdown(f"#### 運営中({len(operating)})— 待ち短い順")
+    st.caption(
+        f"**着N分** = 今から{arrival_min}分後に着いた時の予測(群衆補正込み)。"
+        "↗=着く頃は混む(今の低さは罠) / ↘=待てば空く"
+    )
     if operating.empty:
         st.caption("運営中のアトラクションがありません。")
     else:
