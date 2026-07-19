@@ -69,10 +69,22 @@ def _ensure_background_poller(db_path: str, interval: int, jitter: int) -> bool:
             from sabotage.data.client import ThemeParksClient
             from sabotage.data.poller import resolve_parks, run_forever
             from sabotage.data.storage import Storage
+            from sabotage.data.weather import WeatherClient
 
-            with Storage(db_path) as store, ThemeParksClient() as client:
+            with (
+                Storage(db_path) as store,
+                ThemeParksClient() as client,
+                WeatherClient() as weather_client,
+            ):
                 parks = resolve_parks(store, client)
-                run_forever(store, client, parks, interval=interval, jitter=jitter)
+                run_forever(
+                    store,
+                    client,
+                    parks,
+                    interval=interval,
+                    jitter=jitter,
+                    weather_client=weather_client,
+                )
         except Exception:  # noqa: BLE001 — 自前ポーリングが死んでも描画は続ける。
             pass
 
@@ -116,6 +128,45 @@ def _pred_text(r) -> str:
     color = {"混む": "#cf222e", "空く": "#1a7f37"}.get(sig, "#6e7781")
     arrow = {"混む": "↗", "空く": "↘"}.get(sig, "→")
     return f'<span style="color:{color};font-weight:600">着{int(pw)}分{arrow}</span>'
+
+
+# WMO weather code → 絵文字(ざっくり)。Open-Meteo の weather_code に対応。
+_WMO_EMOJI = {
+    0: "☀️", 1: "🌤️", 2: "⛅", 3: "☁️",
+    45: "🌫️", 48: "🌫️",
+    51: "🌦️", 53: "🌦️", 55: "🌦️", 56: "🌧️", 57: "🌧️",
+    61: "🌧️", 63: "🌧️", 65: "🌧️", 66: "🌧️", 67: "🌧️",
+    71: "🌨️", 73: "🌨️", 75: "❄️", 77: "🌨️",
+    80: "🌦️", 81: "🌧️", 82: "⛈️",
+    85: "🌨️", 86: "❄️",
+    95: "⛈️", 96: "⛈️", 99: "⛈️",
+}
+# この降水確率(%)以上なら「まもなく雨」警告を出す(=屋内退避で室内系が混む予兆)。
+RAIN_ALERT_PROB = 50
+
+
+def _weather_line(w: dict) -> None:
+    """天気バッジ+雨警告を描画する。w は queries.latest_weather の返り値。
+
+    Phase 2 心理設計:雨予報は「室内系がこれから混む」先行シグナル。網を張る材料。
+    """
+    code = w.get("weather_code")
+    emoji = _WMO_EMOJI.get(int(code), "🌡️") if code is not None else "🌡️"
+    parts = [emoji]
+    temp = w.get("temp_c")
+    if temp is not None:
+        parts.append(f"{temp:.0f}℃")
+    prob = w.get("precip_prob")
+    if prob is not None:
+        parts.append(f"降水{int(prob)}%")
+    st.caption("舞浜 " + " · ".join(parts))
+
+    if prob is not None and int(prob) >= RAIN_ALERT_PROB:
+        st.warning(
+            f"☔️ まもなく雨(降水{int(prob)}%)— 屋内系がこれから混みます。"
+            "先に室内・飲食へ張るのが得(立ち待ちは損失)。",
+            icon="☔️",
+        )
 
 
 def _row(r) -> str:
@@ -215,6 +266,11 @@ def render(
         f"{'🟢' if fresh else '🟠'} 最終更新 {latest.strftime('%H:%M')}(約{max(age_min,0)}分前)"
         + ("" if fresh else " — 古い可能性。ポーラー稼働を確認")
     )
+
+    # 天気(舞浜)。あれば気温バッジ+雨の先読み警告。無ければ黙って飛ばす。
+    weather = queries.latest_weather(conn)
+    if weather:
+        _weather_line(weather)
 
     operating, stopped = board.split_operating(b)
 

@@ -79,3 +79,38 @@ class FakeClient:
 def ok_result(name: str) -> FetchResult:
     """フィクスチャ名から成功 FetchResult を作る。"""
     return FetchResult(ok=True, http_status=200, raw_text=load_fixture_text(name))
+
+
+class FakeWeatherClient:
+    """WeatherClient の差し替え。実HTTPを一切叩かない。
+
+    result: fetch_forecast が返す FetchResult(既定は実形状フィクスチャの成功応答)。
+    raise_on_fetch: True なら fetch_forecast で例外(予期せぬ例外の耐性テスト用)。
+    """
+
+    def __init__(
+        self,
+        *,
+        result: FetchResult | None = None,
+        raise_on_fetch: bool = False,
+    ) -> None:
+        self.result = result
+        self.raise_on_fetch = raise_on_fetch
+        self.calls = 0
+
+    def fetch_forecast(self) -> FetchResult:
+        self.calls += 1
+        if self.raise_on_fetch:
+            raise RuntimeError("boom (simulated weather explosion)")
+        if self.result is not None:
+            return self.result
+        return ok_result("open_meteo_forecast.json")
+
+    def close(self) -> None:  # pragma: no cover - trivial
+        pass
+
+    def __enter__(self) -> "FakeWeatherClient":
+        return self
+
+    def __exit__(self, *exc: object) -> None:  # pragma: no cover - trivial
+        pass

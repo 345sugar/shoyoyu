@@ -26,13 +26,16 @@ from ..config import (
     DEFAULT_PARKS,
     META_KEY_PARKS,
     MIN_INTERVAL_SECONDS,
+    SOURCE_OPEN_METEO,
     SOURCE_THEMEPARKS,
     TOKYO_DESTINATION_SLUG,
+    WEATHER_LOCATION_ID,
     Park,
 )
 from .client import ThemeParksClient
 from .normalize import normalize_live
 from .storage import Storage, utc_now_iso
+from .weather import WeatherClient, normalize_weather
 
 log = logging.getLogger("sabotage.poller")
 
@@ -208,12 +211,89 @@ def poll_park(storage: Storage, client: ThemeParksClient, park: Park, *, ts: str
         return "exception"
 
 
-def run_once(storage: Storage, client: ThemeParksClient, parks: list[Park]) -> dict[str, str]:
-    """全パークを1回ずつ取得。パークID→結果種別 の dict を返す。"""
+def poll_weather(storage: Storage, weather_client: WeatherClient, *, ts: str) -> str:
+    """舞浜の天気を1回取得し weather テーブルへ蓄積する。結果種別を返す。
+
+    パーク非依存の1点観測なので1サイクルに1回。例外はここで吸収し、欠測として残す
+    (欠測は観測)。天気の失敗で待ち時間サイクルを巻き込まない。
+    """
+    try:
+        result = weather_client.fetch_forecast()
+        if not result.ok:
+            storage.record_weather(
+                ts=ts,
+                source=SOURCE_OPEN_METEO,
+                location_id=WEATHER_LOCATION_ID,
+                http_status=result.http_status,
+                raw_json=result.raw_text,
+                reading=None,
+            )
+            log.warning("[天気] 取得失敗 → 欠測記録: %s", result.error)
+            return "fetch_failed"
+
+        try:
+            payload = result.json()
+        except json.JSONDecodeError as exc:
+            storage.record_weather(
+                ts=ts,
+                source=SOURCE_OPEN_METEO,
+                location_id=WEATHER_LOCATION_ID,
+                http_status=result.http_status,
+                raw_json=result.raw_text,
+                reading=None,
+            )
+            log.warning("[天気] JSONパース失敗 → 欠測記録: %s", exc)
+            return "parse_failed"
+
+        reading = normalize_weather(payload)
+        storage.record_weather(
+            ts=ts,
+            source=SOURCE_OPEN_METEO,
+            location_id=WEATHER_LOCATION_ID,
+            http_status=result.http_status,
+            raw_json=result.raw_text,
+            reading=reading,
+        )
+        if reading is None:
+            log.warning("[天気] 想定外の形 → 生のみ記録(仕様変更?)")
+            return "unexpected_shape"
+        log.info("[天気] OK: %s℃ 降水確率%s%%", reading.temp_c, reading.precip_prob)
+        return "ok"
+    except Exception as exc:  # noqa: BLE001 — サイクルを殺さない。
+        log.exception("[天気] 予期せぬ例外(スキップして続行): %s", exc)
+        try:
+            storage.record_weather(
+                ts=ts,
+                source=SOURCE_OPEN_METEO,
+                location_id=WEATHER_LOCATION_ID,
+                http_status=0,
+                raw_json=json.dumps(
+                    {"error": str(exc), "type": type(exc).__name__}, ensure_ascii=False
+                ),
+                reading=None,
+            )
+        except Exception:  # noqa: BLE001
+            log.exception("[天気] 欠測の記録にも失敗")
+        return "exception"
+
+
+def run_once(
+    storage: Storage,
+    client: ThemeParksClient,
+    parks: list[Park],
+    *,
+    weather_client: WeatherClient | None = None,
+) -> dict[str, str]:
+    """全パークを1回ずつ取得。パークID→結果種別 の dict を返す。
+
+    weather_client があれば舞浜の天気も1回取得する(結果は "weather" キーに入る)。
+    """
     ts = utc_now_iso()
     results: dict[str, str] = {}
     for park in parks:
         results[park.park_id] = poll_park(storage, client, park, ts=ts)
+    if weather_client is not None:
+        results["weather"] = poll_weather(storage, weather_client, ts=ts)
     return results
 
 
@@ -224,6 +304,7 @@ def run_forever(
     *,
     interval: int = DEFAULT_INTERVAL_SECONDS,
     jitter: int = DEFAULT_JITTER_SECONDS,
+    weather_client: WeatherClient | None = None,
     sleep=time.sleep,
 ) -> None:
     """常駐ループ。interval + [0,jitter] 秒スリープ。Ctrl-C で綺麗に抜ける。"""
@@ -232,7 +313,7 @@ def run_forever(
     try:
         while True:
             try:
-                run_once(storage, client, parks)
+                run_once(storage, client, parks, weather_client=weather_client)
             except Exception:  # noqa: BLE001 — 二重の安全網。ループは死なない。
                 log.exception("サイクル全体で例外(続行)")
             nap = interval + random.uniform(0, max(0, jitter))
@@ -282,14 +363,23 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     db_path = Path(args.db)
-    with Storage(db_path) as storage, ThemeParksClient() as client:
+    with (
+        Storage(db_path) as storage,
+        ThemeParksClient() as client,
+        WeatherClient() as weather_client,
+    ):
         parks = resolve_parks(storage, client, force_discover=args.discover)
         if args.once:
-            results = run_once(storage, client, parks)
+            results = run_once(storage, client, parks, weather_client=weather_client)
             log.info("--once 完了: %s", results)
         else:
             run_forever(
-                storage, client, parks, interval=args.interval, jitter=args.jitter
+                storage,
+                client,
+                parks,
+                interval=args.interval,
+                jitter=args.jitter,
+                weather_client=weather_client,
             )
     return 0
 

@@ -19,6 +19,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from .normalize import Observation
+from .weather import WeatherReading
 
 # 欠測(取得失敗・パース失敗)を表す観測ステータス。
 STATUS_FETCH_FAILED = "FETCH_FAILED"
@@ -50,9 +51,26 @@ CREATE TABLE IF NOT EXISTS meta (
     value TEXT NOT NULL
 );
 
+-- 天気(Open-Meteo)。舞浜1点の時系列。待ち時間と並べて Phase 2「雨の再配分」に使う。
+-- raw_json を同じ行に持つので、正規化列の設計ミスからでも生から復旧できる。
+-- 取得失敗は http_status=0・正規化列 NULL の欠測行として残す(欠測は観測)。
+CREATE TABLE IF NOT EXISTS weather (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    ts           TEXT    NOT NULL,
+    source       TEXT    NOT NULL,
+    location_id  TEXT    NOT NULL,
+    http_status  INTEGER NOT NULL,
+    temp_c       REAL,
+    precip_mm    REAL,
+    precip_prob  INTEGER,
+    weather_code INTEGER,
+    raw_json     TEXT    NOT NULL
+);
+
 CREATE INDEX IF NOT EXISTS idx_snapshots_park_ts ON snapshots(park_id, ts);
 CREATE INDEX IF NOT EXISTS idx_observations_park_ts ON observations(park_id, ts);
 CREATE INDEX IF NOT EXISTS idx_observations_entity_ts ON observations(entity_id, ts);
+CREATE INDEX IF NOT EXISTS idx_weather_ts ON weather(ts);
 """
 
 
@@ -159,6 +177,43 @@ class Storage:
         )
         return snapshot_id
 
+    # --- weather -------------------------------------------------------------
+
+    def record_weather(
+        self,
+        *,
+        ts: str,
+        source: str,
+        location_id: str,
+        http_status: int,
+        raw_json: str,
+        reading: WeatherReading | None,
+    ) -> int:
+        """天気を1行保存する。id を返す。
+
+        reading が None(取得失敗・パース不能・想定外の形)なら正規化列は NULL のまま、
+        生 raw_json だけを残す(欠測は観測)。http_status で成否を後から判別できる。
+        """
+        r = reading
+        cur = self._conn.execute(
+            "INSERT INTO weather "
+            "(ts, source, location_id, http_status, temp_c, precip_mm, precip_prob, "
+            " weather_code, raw_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                ts,
+                source,
+                location_id,
+                http_status,
+                r.temp_c if r else None,
+                r.precip_mm if r else None,
+                r.precip_prob if r else None,
+                r.weather_code if r else None,
+                raw_json,
+            ),
+        )
+        self._conn.commit()
+        return int(cur.lastrowid)
+
     # --- meta ----------------------------------------------------------------
 
     def set_meta(self, key: str, value: str) -> None:
@@ -176,7 +231,7 @@ class Storage:
     # --- misc ----------------------------------------------------------------
 
     def count(self, table: str) -> int:
-        if table not in {"snapshots", "observations", "meta"}:
+        if table not in {"snapshots", "observations", "meta", "weather"}:
             raise ValueError(f"unknown table: {table}")
         row = self._conn.execute(f"SELECT COUNT(*) AS n FROM {table}").fetchone()
         return int(row["n"])

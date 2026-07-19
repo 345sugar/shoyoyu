@@ -21,9 +21,16 @@ import logging
 from pathlib import Path
 from typing import Any
 
-from ..config import DEFAULT_PARKS, SOURCE_THEMEPARKS, Park
+from ..config import (
+    DEFAULT_PARKS,
+    SOURCE_OPEN_METEO,
+    SOURCE_THEMEPARKS,
+    WEATHER_LOCATION_ID,
+    Park,
+)
 from ..data.client import FetchResult, ThemeParksClient
 from ..data.storage import utc_now_iso
+from ..data.weather import WeatherClient
 
 log = logging.getLogger("sabotage.scrape")
 
@@ -58,6 +65,27 @@ def build_record(park: Park, res: FetchResult, ts: str) -> dict[str, Any]:
 def ndjson_path(out_dir: str | Path, park_id: str, ts: str) -> Path:
     """`<out>/themeparks/live/<park_id>/<UTC日付>.ndjson`。日付は ts の先頭10文字。"""
     return Path(out_dir) / "themeparks" / "live" / park_id / f"{ts[:10]}.ndjson"
+
+
+def weather_ndjson_path(out_dir: str | Path, ts: str) -> Path:
+    """`<out>/weather/open-meteo/<UTC日付>.ndjson`。天気は舞浜1点なので park で分けない。"""
+    return Path(out_dir) / "weather" / SOURCE_OPEN_METEO / f"{ts[:10]}.ndjson"
+
+
+def build_weather_record(res: FetchResult, ts: str) -> dict[str, Any]:
+    """1回分の天気スナップショット行を作る(backfill が weather テーブルへ流し込める形)。"""
+    rec: dict[str, Any] = {
+        "ts": ts,
+        "source": SOURCE_OPEN_METEO,
+        "location_id": WEATHER_LOCATION_ID,
+        "http_status": res.http_status,
+        "raw": _raw_value(res),
+    }
+    if not res.ok:
+        rec["ok"] = False
+        if res.error:
+            rec["error"] = res.error
+    return rec
 
 
 def append_record(out_dir: str | Path, rec: dict[str, Any]) -> Path:
@@ -103,6 +131,36 @@ def scrape_once(
     return written
 
 
+def scrape_weather_once(
+    client: WeatherClient, out_dir: str | Path, *, ts: str | None = None
+) -> dict[str, Any]:
+    """舞浜の天気を1回取得し weather NDJSON へ追記。書いたレコードを返す。
+
+    失敗しても例外にせず、欠測(http 0)として記録して続行する(欠測は観測)。
+    """
+    ts = ts or utc_now_iso()
+    try:
+        res = client.fetch_forecast()
+        rec = build_weather_record(res, ts)
+    except Exception as exc:  # noqa: BLE001 — 天気の失敗で全体を止めない。
+        log.warning("[天気] 取得中に例外 → 欠測記録: %s", exc)
+        rec = {
+            "ts": ts,
+            "source": SOURCE_OPEN_METEO,
+            "location_id": WEATHER_LOCATION_ID,
+            "http_status": 0,
+            "raw": {"error": str(exc), "type": type(exc).__name__},
+            "ok": False,
+            "error": f"{type(exc).__name__}: {exc}",
+        }
+    path = weather_ndjson_path(out_dir, ts)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a", encoding="utf-8") as f:
+        f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+    log.info("[天気] http=%s → %s", rec["http_status"], path)
+    return rec
+
+
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(
         prog="sabotage-scrape",
@@ -118,10 +176,16 @@ def main(argv: list[str] | None = None) -> int:
         format="%(asctime)s %(levelname)s %(name)s %(message)s",
     )
 
+    ts = utc_now_iso()
     with ThemeParksClient() as client:
-        written = scrape_once(client, list(DEFAULT_PARKS), args.out)
+        written = scrape_once(client, list(DEFAULT_PARKS), args.out, ts=ts)
+    with WeatherClient() as weather_client:
+        weather_rec = scrape_weather_once(weather_client, args.out, ts=ts)
     ok = sum(1 for r in written if r["http_status"] == 200)
-    print(f"scrape 完了: {len(written)} レコード(HTTP200={ok}) → {args.out}")
+    wx = "OK" if weather_rec["http_status"] == 200 else "欠測"
+    print(
+        f"scrape 完了: {len(written)} レコード(HTTP200={ok})+ 天気={wx} → {args.out}"
+    )
     return 0
 
 

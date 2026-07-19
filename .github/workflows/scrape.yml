@@ -1,9 +1,9 @@
 name: scrape
 
 # 暫定フライホイール(git scraping)。常時稼働マシンが用意できるまでの繋ぎ。
-# 毎時、両パークの /live を1回取得し、生JSONを NDJSON として `data` ブランチへ追記する。
-# 後日、本命の5分間隔ポーラーへ移行する際、この git 履歴から `sabotage-backfill` で
-# SQLite を一括再構築できる。
+# 毎時、両パークの /live と 舞浜の天気(Open-Meteo)を1回取得し、生JSONを NDJSON として
+# `data` ブランチへ追記する。後日、本命の5分間隔ポーラーへ移行する際、この git 履歴から
+# `sabotage-backfill` で SQLite(observations + weather)を一括再構築できる。
 #
 # 礼儀(CLAUDE.md データ倫理):User-Agent 明示(config.USER_AGENT)、間隔は1時間固定
 # (非公式API負荷と Actions 無料枠の両面から)、私的利用の範囲。

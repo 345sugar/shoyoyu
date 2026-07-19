@@ -99,6 +99,23 @@ jobs:
           echo "HTTP $code (queue-times parks)"
           head -c 400 "$OUT/queue_times_parks.json" || true; echo
 
+      - name: Be polite (jitter)
+        run: sleep 5
+
+      # Open-Meteo(天気・キー不要)。舞浜の現在天気+当日の時間別予報。
+      # data/weather.py の WeatherClient と同じクエリ形状で採取する。
+      - name: Fetch Open-Meteo forecast (Maihama)
+        continue-on-error: true
+        run: |
+          code=$(curl -sS --retry 3 --retry-delay 3 -A "$UA" \
+            -H 'Accept: application/json' \
+            -w '%{http_code}' \
+            -o "$OUT/open_meteo_forecast.json" \
+            "https://api.open-meteo.com/v1/forecast?latitude=35.63&longitude=139.88&current=temperature_2m,precipitation,weather_code&hourly=precipitation_probability,precipitation,temperature_2m&forecast_days=1&timezone=Asia%2FTokyo") || code="000"
+          echo "$code" > "$OUT/status_open_meteo_forecast.txt"
+          echo "HTTP $code (open-meteo)"
+          head -c 400 "$OUT/open_meteo_forecast.json" || true; echo
+
       - name: Summary
         run: |
           echo "== captured files =="
