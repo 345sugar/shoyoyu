@@ -13,23 +13,57 @@ from __future__ import annotations
 
 import argparse
 import os
+import threading
 from pathlib import Path
 
 import pandas as pd
 import streamlit as st
+import streamlit.components.v1 as components
 
 from sabotage.analysis import board, nowcast, queries
-from sabotage.config import DEFAULT_DB_PATH
+from sabotage.config import DEFAULT_DB_PATH, DEFAULT_INTERVAL_SECONDS, DEFAULT_JITTER_SECONDS
 from sabotage.tools.seed_demo import DEMO_SOURCE, META_DEMO_FLAG
 
 FRESH_LIMIT_MIN = 15  # これを超えて更新が無ければ「古い」警告。
 
 
-def _db_path_from_args() -> str:
+def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--db", default=os.environ.get("SABOTAGE_DB", DEFAULT_DB_PATH))
+    # --self-poll: このページ自身が裏で5分ごとに取得する(常時稼働の箱が無くても
+    #   Streamlit Community Cloud 等の無料URLで5分ライブにできる)。
+    parser.add_argument(
+        "--self-poll",
+        action="store_true",
+        default=os.environ.get("SABOTAGE_SELF_POLL", "").lower() in ("1", "true", "yes"),
+    )
+    parser.add_argument("--interval", type=int, default=DEFAULT_INTERVAL_SECONDS)
+    parser.add_argument("--jitter", type=int, default=DEFAULT_JITTER_SECONDS)
     args, _ = parser.parse_known_args()
-    return args.db
+    return args
+
+
+@st.cache_resource
+def _ensure_background_poller(db_path: str, interval: int, jitter: int) -> bool:
+    """サーバープロセスで一度だけ、ポーラーを常駐スレッドとして起動する。
+
+    Streamlit の cache_resource で「1プロセス1回」を担保。スレッドは自前の Storage 接続
+    (WAL)を持つので、描画側の読み取りと並行できる。間隔は5分以上(config 準拠)。
+    """
+    def _run() -> None:
+        try:
+            from sabotage.data.client import ThemeParksClient
+            from sabotage.data.poller import resolve_parks, run_forever
+            from sabotage.data.storage import Storage
+
+            with Storage(db_path) as store, ThemeParksClient() as client:
+                parks = resolve_parks(store, client)
+                run_forever(store, client, parks, interval=interval, jitter=jitter)
+        except Exception:  # noqa: BLE001 — 自前ポーリングが死んでも描画は続ける。
+            pass
+
+    threading.Thread(target=_run, name="sabotage-selfpoll", daemon=True).start()
+    return True
 
 
 def _fmt_delta(delta) -> str:
@@ -86,19 +120,51 @@ def _row(r) -> str:
     )
 
 
-def render(db_path: str) -> None:
+def render(
+    db_path: str,
+    *,
+    self_poll: bool = False,
+    interval: int = DEFAULT_INTERVAL_SECONDS,
+    jitter: int = DEFAULT_JITTER_SECONDS,
+) -> None:
     st.set_page_config(page_title="sabotage 現況", page_icon="🎢", layout="centered")
     st.title("🎢 現況ボード")
 
+    if self_poll:
+        # このページ自身が裏で5分ごとに取得(常時稼働の箱が不要)。
+        Path(db_path).parent.mkdir(parents=True, exist_ok=True)
+        _ensure_background_poller(db_path, max(interval, 300), jitter)
+        # 60秒ごとにページを自動リロードして最新を反映(親フレームごと)。
+        components.html(
+            "<script>setTimeout(function(){window.parent.location.reload();},60000);</script>",
+            height=0,
+        )
+        st.caption(f"🔴 5分ライブ(このページ自身が取得中・{max(interval, 300)//60}分間隔)")
+
     if not Path(db_path).exists():
-        st.error(f"DB が見つかりません: `{db_path}`")
-        st.caption("`sabotage-poll --loop` で実データを貯めるか、`sabotage-seed-demo` で試せます。")
+        if self_poll:
+            st.info("⏳ 初回取得中… 数十秒で最初のデータが出ます(自動更新)。")
+        else:
+            st.error(f"DB が見つかりません: `{db_path}`")
+            st.caption("`sabotage-poll --loop` で貯めるか、`sabotage-seed-demo` で試せます。")
         return
+
+    # 自前ポーリング初回はスキーマ未作成のことがある(スレッドがファイルだけ先に作る)。
+    # 冪等にスキーマを用意してレースを避ける。
+    try:
+        from sabotage.data.storage import Storage as _Storage
+
+        _Storage(db_path).close()
+    except Exception:  # noqa: BLE001
+        pass
 
     conn = queries.connect(db_path)
     df = queries.load_observations(conn)
     if df.empty:
-        st.info("まだ観測データがありません。")
+        if self_poll:
+            st.info("⏳ 取得中… 最初のデータを待っています(自動更新)。")
+        else:
+            st.info("まだ観測データがありません。")
         return
 
     # 合成データなら明示。
@@ -159,7 +225,10 @@ def render(db_path: str) -> None:
 
 
 def main() -> None:
-    render(_db_path_from_args())
+    args = _parse_args()
+    render(
+        args.db, self_poll=args.self_poll, interval=args.interval, jitter=args.jitter
+    )
 
 
 if __name__ == "__main__":

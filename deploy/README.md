@@ -53,6 +53,37 @@ iPhone 側:
 > `tailscale serve` を使うのは、compose が `127.0.0.1` 束縛のため。素の `http://…:8501` は
 > tailnet からは届かない(だから serve でトンネルする)。公開インターネットには出ない。
 
+## 方法C: Streamlit Community Cloud(箱もDockerも不要・無料URL)★VPSが難しい人向け
+
+**現況ボード自身が裏で5分ごとに取得する**モード(`--self-poll`)を使い、無料の
+Streamlit Community Cloud に置く。VPS も Docker も要らず、**GitHub を繋ぐだけ**で
+5分ライブの URL が手に入る。iPhone はその URL を Safari で開くだけ。
+
+手順:
+1. https://share.streamlit.io/ に GitHub でログイン → **New app**。
+2. リポジトリ `345sugar/shoyoyu`、ブランチ `main`、
+   **Main file path**: `src/sabotage/viz/board.py`。
+3. **Advanced settings → Secrets / 環境変数** に:
+   ```
+   SABOTAGE_SELF_POLL=1
+   SABOTAGE_DB=/tmp/sabotage.db
+   ```
+4. (推奨)アプリを **Private** にして自分だけ閲覧可に(私的利用の範囲)。
+5. Deploy → 発行された URL を iPhone のホーム画面に追加。
+
+ローカルでも同じモードを試せる:
+
+```bash
+SABOTAGE_SELF_POLL=1 streamlit run src/sabotage/viz/board.py -- --db /tmp/sabotage.db
+```
+
+> **正直な制約(Streamlit Cloud)**:
+> - 無操作が続くとアプリが**スリープ**する(開けば復帰)。=誰も見ていない間は取得が止まる。
+>   当日その場で開いて使う分には問題ない(見ている間は5分ごとに更新)。
+> - コンテナのディスクは**揮発**(再起動で履歴リセット)。長期履歴は毎時フライホイール
+>   (`data` ブランチ)側に残るので、そちらから `sabotage-backfill` で再構築できる。
+> - 常に確実な24時間5分ライブが欲しいなら方法A(VPS/Pi)が上。
+
 ## 方法B: systemd(Docker 無しの Pi / Linux)
 
 `deploy/sabotage.service` の先頭コメントの手順どおり。`sabotage-mobile` をユーザーサービス
