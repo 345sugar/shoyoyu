@@ -27,6 +27,10 @@
 - `tdl_live.json` — Tokyo Disneyland の `/entity/{id}/live` 実応答(37エンティティ)。
 - `tds_live.json` — Tokyo DisneySea の `/entity/{id}/live` 実応答(34エンティティ)。
 - `live_malformed.json` — 2xx だが `liveData` を欠く仕様変更疑いレスポンス(**合成**・欠測検知テスト用)。
+- `open_meteo_forecast.json` — Open-Meteo `/forecast`(舞浜)の実形状。**Open-Meteo の公開仕様に
+  基づく実形状**で、`current`(気温・降水・weather_code)+ `hourly`(降水確率など24時間分)を持つ。
+  `fetch-fixtures` に Open-Meteo 採取ステップを追加済み(実物での再確認・差し替え用)。
+  降水確率は「今以降2時間の最大」を採る(`data/weather.py`)ので、12:00 時点で 13:00 の 60% を拾う。
 
 ## 再採取
 

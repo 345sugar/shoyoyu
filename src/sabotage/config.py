@@ -15,6 +15,16 @@ API_BASE = "https://api.themeparks.wiki/v1"
 # データソース識別子(snapshots.source に入る)
 SOURCE_THEMEPARKS = "themeparks.wiki"
 
+# Open-Meteo(天気・キー不要)。Phase 2「雨の再配分イベントの予告」の燃料。
+# 舞浜(東京ディズニーリゾート)の座標。天気はパーク非依存の1点観測なので、
+# 両パーク共通で1回だけ取得する。
+OPEN_METEO_BASE = "https://api.open-meteo.com/v1"
+SOURCE_OPEN_METEO = "open-meteo"
+MAIHAMA_LAT = 35.63
+MAIHAMA_LON = 139.88
+# weather テーブルの location_id 列に入れる固定キー(将来 別地点を足すとき用の識別子)。
+WEATHER_LOCATION_ID = "maihama"
+
 # 非公式アグリゲータへの礼儀(CLAUDE.md データ倫理):User-Agent を明示する。
 USER_AGENT = "sabotage-poller/0.1 (+https://github.com/345sugar/shoyoyu; personal-use)"
 

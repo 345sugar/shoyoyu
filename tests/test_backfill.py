@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from conftest import FakeClient, ok_result
+from conftest import FakeClient, FakeWeatherClient, ok_result
 
 from sabotage.config import Park
 from sabotage.data.storage import STATUS_FETCH_FAILED, Storage
@@ -62,6 +62,33 @@ def test_backfill_records_failure_as_fetch_failed(tmp_path):
         assert stats["snapshots"] == 0
         row = st.connection.execute("SELECT status FROM observations").fetchone()
         assert row["status"] == STATUS_FETCH_FAILED
+
+
+def test_scrape_then_backfill_weather(tmp_path):
+    data_dir = tmp_path / "data"
+    scrape.scrape_weather_once(FakeWeatherClient(), data_dir, ts="2026-07-19T03:00:00Z")
+
+    with Storage(tmp_path / "s.db") as st:
+        stats = backfill.backfill_weather(st, data_dir)
+        assert stats["weather"] == 1
+        assert stats["weather_failed"] == 0
+        assert st.count("weather") == 1
+        row = st.connection.execute("SELECT temp_c, precip_prob FROM weather").fetchone()
+        assert row["temp_c"] == 29.4
+        assert row["precip_prob"] == 60
+
+
+def test_backfill_weather_is_idempotent(tmp_path):
+    data_dir = tmp_path / "data"
+    scrape.scrape_weather_once(FakeWeatherClient(), data_dir, ts="2026-07-19T03:00:00Z")
+
+    with Storage(tmp_path / "s.db") as st:
+        first = backfill.backfill_weather(st, data_dir)
+        assert first["weather"] == 1
+        second = backfill.backfill_weather(st, data_dir)
+        assert second["weather"] == 0
+        assert second["skipped"] == 1
+        assert st.count("weather") == 1
 
 
 def test_backfill_skips_broken_lines(tmp_path):

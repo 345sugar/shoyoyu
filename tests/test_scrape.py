@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 
-from conftest import FakeClient, ok_result
+from conftest import FakeClient, FakeWeatherClient, ok_result
 
 from sabotage.config import Park
 from sabotage.data.client import FetchResult
@@ -91,3 +91,25 @@ def test_build_record_parse_failure_keeps_string(tmp_path):
     rec = scrape.build_record(Park(TDL, "TDL"), res, TS)
     assert rec["raw"] == "<html>nope</html>"
     assert rec["http_status"] == 200
+
+
+def test_scrape_weather_writes_ndjson(tmp_path):
+    rec = scrape.scrape_weather_once(FakeWeatherClient(), tmp_path, ts=TS)
+    assert rec["source"] == "open-meteo"
+    assert rec["location_id"] == "maihama"
+    assert rec["http_status"] == 200
+    f = tmp_path / "weather" / "open-meteo" / "2026-07-18.ndjson"
+    assert f.exists()
+    line = _read_lines(f)[0]
+    assert isinstance(line["raw"], dict)
+    assert "current" in line["raw"]
+
+
+def test_scrape_weather_failure_is_http_zero(tmp_path):
+    rec = scrape.scrape_weather_once(
+        FakeWeatherClient(raise_on_fetch=True), tmp_path, ts=TS
+    )
+    assert rec["http_status"] == 0
+    assert rec["ok"] is False
+    f = tmp_path / "weather" / "open-meteo" / "2026-07-18.ndjson"
+    assert len(_read_lines(f)) == 1  # 欠測でも1行残る。

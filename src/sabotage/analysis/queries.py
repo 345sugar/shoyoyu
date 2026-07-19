@@ -113,3 +113,19 @@ def available_parks(conn: sqlite3.Connection) -> list[str]:
 def data_sources(conn: sqlite3.Connection) -> set[str]:
     """snapshots に含まれる source の集合(データの出所判定に使う)。"""
     return {r["source"] for r in conn.execute("SELECT DISTINCT source FROM snapshots")}
+
+
+def latest_weather(conn: sqlite3.Connection) -> dict | None:
+    """最新の有効な天気観測を1件返す(欠測行=http_status!=200 は飛ばす)。
+
+    返り値: {ts, temp_c, precip_mm, precip_prob, weather_code} または None。
+    weather テーブルがまだ無い(天気を取り始める前の古い DB)場合も None。
+    """
+    try:
+        row = conn.execute(
+            "SELECT ts, temp_c, precip_mm, precip_prob, weather_code "
+            "FROM weather WHERE http_status=200 ORDER BY ts DESC LIMIT 1"
+        ).fetchone()
+    except sqlite3.OperationalError:
+        return None  # weather テーブル未作成の旧 DB。
+    return dict(row) if row else None
