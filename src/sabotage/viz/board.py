@@ -244,13 +244,31 @@ def render(
         st.info("表示できるパークがありません。")
         return
 
+    # パーク選択と到着分を URL クエリに保持する。self_poll の60秒リロードは
+    # ページ全体を再読込みするため、保持しないとスライダー等が毎分既定値へ戻ってしまう
+    #(「動かしても効かない」ように見える原因)。クエリに載せておけば再読込み後も復元される。
+    qp = st.query_params
+
+    park_from_qp = qp.get("park")
+    park_index = parks.index(park_from_qp) if park_from_qp in parks else 0
     park_id = st.radio(
-        "パーク", parks, format_func=lambda p: names.get(p, p), horizontal=True
+        "パーク", parks, index=park_index,
+        format_func=lambda p: names.get(p, p), horizontal=True,
     )
+    if qp.get("park") != park_id:
+        qp["park"] = park_id
+
+    try:
+        arr_default = int(qp.get("arr", nowcast.DEFAULT_ARRIVAL_MIN))
+    except (TypeError, ValueError):
+        arr_default = nowcast.DEFAULT_ARRIVAL_MIN
+    arr_default = min(90, max(5, arr_default))
     arrival_min = st.slider(
-        "到着まで(分)", min_value=5, max_value=45, value=nowcast.DEFAULT_ARRIVAL_MIN, step=5,
-        help="今から何分後に着くか。到着時の待ち(群衆補正込み)を予測する。",
+        "到着まで(分)", min_value=5, max_value=90, value=arr_default, step=5,
+        help="今から何分後に着くか。到着時の待ち(群衆補正込み)を予測する。1時間後なら60。",
     )
+    if qp.get("arr") != str(arrival_min):
+        qp["arr"] = str(arrival_min)
 
     b = nowcast.predict_board(df[df["park_id"] == park_id], park_id, arrival_min=arrival_min)
     if b.empty:
@@ -279,6 +297,18 @@ def render(
         f"**着N分** = 今から{arrival_min}分後に着いた時の予測(群衆補正込み)。"
         "↗=着く頃は混む(今の低さは罠) / ↘=待てば空く"
     )
+    # 予測の“段階”を正直に出す。履歴が薄いと全部 flat(=現在値そのまま)になり、
+    # スライダーを動かしても数字が変わらない。それを黙って放置すると「壊れてる?」に見える。
+    methods = [m for m in operating.get("pred_method", pd.Series(dtype=object)).tolist() if m]
+    if methods and all(m == "flat" for m in methods):
+        st.info(
+            "⏳ いま履歴が薄いので、予測は現在値と同じです"
+            "(スライダーを動かしても数字は変わりません)。"
+            "データが数日貯まると『この時間帯はいつもこう』で動き始めます。",
+            icon="⏳",
+        )
+    elif methods and all(m in ("flat", "momentum") for m in methods):
+        st.caption("※ いまは直近の傾きベースの暫定予測。数日貯まると平常回帰(本命)に切り替わります。")
     if operating.empty:
         st.caption("運営中のアトラクションがありません。")
     else:
