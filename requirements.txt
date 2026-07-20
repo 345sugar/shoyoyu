@@ -1,3 +1,8 @@
 # Streamlit Community Cloud 用。Cloud はこれを見て依存を入れる。
-# ローカル開発は `pip install -e '.[viz]'` を使う(こちらは Cloud 専用)。
-.[viz]
+# ローカル開発は `pip install -e '.[viz]'` を使う。
+#
+# -e(editable)で入れる理由: 非編集の `.[viz]` だと、パッケージ版が 0.1.0 のまま
+# 変わらないため、新しいモジュールを足しても pip が「既に満たされている」と判断して
+# site-packages を更新せず、`ModuleNotFoundError/ImportError` になる(dining.py 追加で発生)。
+# editable なら常にリポジトリの最新ソースを import するので、この地雷を根本から断てる。
+-e .[viz]
