@@ -20,7 +20,7 @@ import pandas as pd
 import streamlit as st
 import streamlit.components.v1 as components
 
-from sabotage.analysis import board, nowcast, queries
+from sabotage.analysis import board, crowd, dining, nowcast, queries
 from sabotage.config import DEFAULT_DB_PATH, DEFAULT_INTERVAL_SECONDS, DEFAULT_JITTER_SECONDS
 from sabotage.tools.seed_demo import DEMO_SOURCE, META_DEMO_FLAG
 
@@ -166,6 +166,43 @@ def _weather_line(w: dict) -> None:
             f"☔️ まもなく雨(降水{int(prob)}%)— 屋内系がこれから混みます。"
             "先に室内・飲食へ張るのが得(立ち待ちは損失)。",
             icon="☔️",
+        )
+
+
+def _dining_section(park_df, park_id: str, latest_ts, weather: dict | None) -> None:
+    """🍽️ 食事どきナビ。人圧(実データ)+天気で「食べ時/室内へ」を助言し、店(参考)を並べる。
+
+    店の時刻・空席・メニューは非公式APIに存在しないため出さない(無いものは出さない)。
+    """
+    today = pd.Timestamp(latest_ts).date()
+    press = crowd.crowd_pressure(park_df, today)
+    series = press["pressure"].tolist() if not press.empty else []
+    current = series[-1] if series else None
+    advice = dining.meal_timing(current, series, weather)
+
+    st.markdown("#### 🍽️ 食事どき")
+    box = {"eat": st.info, "ride": st.success, "rain": st.warning}.get(advice.mode, st.info)
+    box(f"**{advice.headline}**\n\n{advice.detail}")
+
+    rests = dining.restaurants(park_id, indoor_only=advice.indoor_urgent)
+    # 室内→エリア順に。室内フラグを分かりやすく。
+    rests = sorted(rests, key=lambda r: (not r.indoor, r.area, r.name))
+    label = "☔️ 室内で座れる店" if advice.indoor_urgent else "🍽️ この園の店(参考)"
+    with st.expander(f"{label}({len(rests)})"):
+        html = []
+        for r in rests:
+            mark = "🏠室内" if r.indoor else "🌤️屋外"
+            html.append(
+                '<div style="padding:.35rem 0;border-bottom:1px solid rgba(128,128,128,.2)">'
+                f'<div style="font-weight:600">{r.name}</div>'
+                f'<div style="font-size:.78rem;color:#6e7781">'
+                f'{r.area} · {r.service} · {mark}{" · " + r.note if r.note else ""}</div>'
+                "</div>"
+            )
+        st.markdown("".join(html), unsafe_allow_html=True)
+        st.caption(
+            "※ 店は参考データ(改装・営業変更あり得る)。待ち時間・空席・メニューは"
+            "非公式APIに無いため非提供。"
         )
 
 
@@ -319,6 +356,10 @@ def render(
         with st.expander(f"🛑 停止・休止・改修({len(stopped)})"):
             html = "".join(_row(r) for _, r in stopped.iterrows())
             st.markdown(html, unsafe_allow_html=True)
+
+    st.divider()
+    # 🍽️ 食事どき(人圧+天気で「食べ時/室内へ」。店は参考データ)。
+    _dining_section(df[df["park_id"] == park_id], park_id, latest, weather)
 
     st.divider()
     st.caption("データ元: ThemeParks.wiki(非公式・私的利用)")
