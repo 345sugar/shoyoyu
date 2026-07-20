@@ -31,6 +31,10 @@ jobs:
       UA: "sabotage-poller/0.1 (+https://github.com/345sugar/shoyoyu; personal-use)"
       TDL_ID: "3cc919f1-d16d-43e0-8c3f-1dd269bd1a42"
       TDS_ID: "67b290d5-3478-4f23-b601-2f8fb71ba803"
+      # ショー /live の形状確認用サンプル(children から採取した実 SHOW ID)。
+      SHOW_TDL_PARADE: "764d8c54-70be-413c-9a9d-f6d69336684b"   # Electrical Parade Dreamlights
+      SHOW_TDL_STAGE: "80ce7be5-50d1-4deb-b26d-abc44a0383fb"    # Mickey's Magical Music World
+      SHOW_TDS: "af936032-09bb-4b4f-996d-bedf400056b0"          # Believe! Sea of Dreams
       OUT: captured
     steps:
       - name: Checkout (for pushing captured JSON to a branch)
@@ -131,6 +135,27 @@ jobs:
           echo "$code" > "$OUT/status_themeparks_tds_children.txt"
           echo "HTTP $code (TDS children)"
           python3 -c "import json,collections; d=json.load(open('$OUT/themeparks_tds_children.json')); print(collections.Counter(c.get('entityType') for c in d.get('children',[])))" || true
+
+      - name: Be polite (jitter)
+        run: sleep 5
+
+      # ショー個別の /live。パークの /live はショーを含まないため、ショー時刻(showtimes)が
+      # 取れるかは各ショーの /live を叩いて確認する。3つサンプル採取。
+      - name: Fetch show /live samples
+        continue-on-error: true
+        run: |
+          for pair in "tdl_parade:$SHOW_TDL_PARADE" "tdl_stage:$SHOW_TDL_STAGE" "tds:$SHOW_TDS"; do
+            key="${pair%%:*}"; id="${pair##*:}"
+            code=$(curl -sS --retry 3 --retry-delay 3 -A "$UA" \
+              -H 'Accept: application/json' \
+              -w '%{http_code}' \
+              -o "$OUT/themeparks_show_${key}_live.json" \
+              "https://api.themeparks.wiki/v1/entity/$id/live") || code="000"
+            echo "$code" > "$OUT/status_themeparks_show_${key}_live.txt"
+            echo "HTTP $code (show $key)"
+            head -c 600 "$OUT/themeparks_show_${key}_live.json" || true; echo
+            sleep 5
+          done
 
       - name: Be polite (jitter)
         run: sleep 5
