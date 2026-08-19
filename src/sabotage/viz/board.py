@@ -92,6 +92,17 @@ def _ensure_background_poller(db_path: str, interval: int, jitter: int) -> bool:
     return True
 
 
+@st.cache_resource(show_spinner="📚 蓄積履歴を読み込み中…(初回のみ・数十秒)")
+def _bootstrap_history_once(db_path: str) -> dict:
+    """data ブランチの1ヶ月分をDBへ取り込む。1プロセス1回(cache_resource)。失敗しても描画は続行。"""
+    try:
+        from sabotage.data.history import bootstrap_history
+
+        return bootstrap_history(db_path)
+    except Exception as exc:  # noqa: BLE001
+        return {"skipped": True, "reason": f"error:{type(exc).__name__}"}
+
+
 def _fmt_delta(delta) -> str:
     if delta is None or pd.isna(delta):
         return ""
@@ -243,6 +254,11 @@ def render(
         )
         st.caption(f"🔴 5分ライブ(このページ自身が取得中・{max(interval, 300)//60}分間隔)")
 
+    # data ブランチの蓄積履歴(毎時フライホイール)を揮発DBへ取り込む。これで到着時予測が
+    # 初回から平常回帰で効く(揮発DB+self-pollだけだと flat に戻ってしまう)。初回のみ実行。
+    Path(db_path).parent.mkdir(parents=True, exist_ok=True)
+    boot = _bootstrap_history_once(db_path)
+
     if not Path(db_path).exists():
         if self_poll:
             st.info("⏳ 初回取得中… 数十秒で最初のデータが出ます(自動更新)。")
@@ -321,6 +337,10 @@ def render(
         f"{'🟢' if fresh else '🟠'} 最終更新 {latest.strftime('%H:%M')}(約{max(age_min,0)}分前)"
         + ("" if fresh else " — 古い可能性。ポーラー稼働を確認")
     )
+    if boot and not boot.get("skipped") and boot.get("observations"):
+        st.caption(
+            f"📚 蓄積履歴 {boot['observations']:,} 観測をロード済み — 到着時予測(平常回帰)が有効"
+        )
 
     # 天気(舞浜)。あれば気温バッジ+雨の先読み警告。無ければ黙って飛ばす。
     weather = queries.latest_weather(conn)
