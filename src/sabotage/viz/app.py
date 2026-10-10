@@ -22,10 +22,11 @@ import altair as alt
 import pandas as pd
 import streamlit as st
 
-from sabotage.analysis import correlations, crowd, queries
+from sabotage.analysis import correlations, crowd, insights, queries
 from sabotage.config import DEFAULT_DB_PATH
 from sabotage.tools.seed_demo import DEMO_SOURCE, META_DEMO_FLAG
 from sabotage.viz.theme import APP_NAME, apply_theme, hero, section_intro
+from sabotage.viz.insight_cards import render_insights
 
 
 def _db_path_from_args() -> str:
@@ -161,49 +162,64 @@ def _correlation_section(park_df: pd.DataFrame, weather_df: pd.DataFrame) -> Non
         "THE PATTERNS", "混雑のつながりを読む",
         "アトラクションと天気の記録から、待ち時間の傾向を見つけます。",
     )
-    days = queries.available_dates(park_df)
-    period = st.date_input(
-        "分析する期間", value=(days[-1], days[0]), min_value=days[-1], max_value=days[0],
-        key=f"corr_period_{park_df['park_id'].iloc[0]}",
-    )
-    if not isinstance(period, (tuple, list)) or len(period) != 2:
-        st.info("開始日と終了日を選んでください。")
-        return
-    observations = park_df[park_df["date"].between(period[0], period[1])]
-    waits = correlations.hourly_waits(observations)
-    if waits.empty:
-        st.info("選んだ期間に、運営中の待ち時間データがありません。")
-        return
-    names = list(waits.columns)
-    selected = st.multiselect("比べるアトラクション", names, default=names[:6],
-                              key=f"corr_rides_{park_df['park_id'].iloc[0]}")
-    if len(selected) > 12:
-        st.info("グラフを読みやすくするため、12施設以内で選んでください。")
-        return
-    wide = waits[selected]
-    weather = correlations.hourly_weather(weather_df)
-    weather_available = not weather.empty and not weather.reindex(waits.index).dropna(how="all").empty
-    include_weather = st.checkbox("気温・雨との関係も比べる", value=False,
-                                  disabled=not weather_available)
-    if include_weather and weather_available:
-        available = weather.dropna(axis=1, how="all").rename(columns=WEATHER_LABELS)
-        wide = wide.join(available, how="left")
-        st.caption("降水確率は取得時点から今後2時間の最大予報です。実際に降った雨とは区別して見てください。")
-    elif not weather_available:
-        st.caption("この期間の天気ログはありません。待ち時間どうしを比較できます。")
-    adjust = st.checkbox("時間帯の影響を調整する", value=True,
-                         help="共通観測だけで各時間帯の平均を引きます。昼の混雑などの影響を抑えます。")
-    min_pairs = st.slider("比較に必要な共通観測数（時間）", 10, 100, 10, 5)
+    insight_slot = st.container()
+    with st.expander("分析条件を変える", expanded=False):
+        days = queries.available_dates(park_df)
+        period = st.date_input(
+            "分析する期間", value=(days[-1], days[0]), min_value=days[-1], max_value=days[0],
+            key=f"corr_period_{park_df['park_id'].iloc[0]}",
+        )
+        if not isinstance(period, (tuple, list)) or len(period) != 2:
+            st.info("開始日と終了日を選んでください。")
+            return
+        observations = park_df[park_df["date"].between(period[0], period[1])]
+        waits = correlations.hourly_waits(observations)
+        if waits.empty:
+            st.info("選んだ期間に、運営中の待ち時間データがありません。")
+            return
+        names = list(waits.columns)
+        selected = st.multiselect("比べるアトラクション", names, default=names[:6],
+                                  key=f"corr_rides_{park_df['park_id'].iloc[0]}")
+        if len(selected) > 12:
+            st.info("グラフを読みやすくするため、12施設以内で選んでください。")
+            return
+        wide = waits[selected]
+        weather = correlations.hourly_weather(weather_df)
+        weather_available = not weather.empty and not weather.reindex(waits.index).dropna(how="all").empty
+        include_weather = st.checkbox("気温・雨との関係も比べる", value=False,
+                                      disabled=not weather_available)
+        if include_weather and weather_available:
+            available = weather.dropna(axis=1, how="all").rename(columns=WEATHER_LABELS)
+            wide = wide.join(available, how="left")
+            st.caption("降水確率は取得時点から今後2時間の最大予報です。実際に降った雨とは区別して見てください。")
+        elif not weather_available:
+            st.caption("この期間の天気ログはありません。待ち時間どうしを比較できます。")
+        adjust = st.checkbox("時間帯の影響を調整する", value=True,
+                             help="共通観測だけで各時間帯の平均を引きます。昼の混雑などの影響を抑えます。")
+        min_pairs = st.slider("比較に必要な共通観測数（時間）", 10, 100, 10, 5)
     if len(wide.columns) < 2:
         st.info("比較する項目を2つ以上選んでください。")
         return
     corr, counts, _ = correlations.analyze(wide, adjust_hour=adjust, min_pairs=min_pairs)
+    with insight_slot:
+        st.caption(f"対象期間 {period[0]:%Y/%m/%d} — {period[1]:%Y/%m/%d} · {len(selected)}施設を比較")
+        render_insights(insights.correlation_insights(
+            wide, min_pairs=min_pairs, weather_columns=WEATHER_LABELS.values(),
+        ))
+        with st.expander("ヒントの読み方・掲載基準"):
+            st.write("ヒントは、同じペアで共通24時間以上・3日以上ある記録を対象に、"
+                     "時間帯を調整した相関から作成します。最低観測数を24より大きくした場合は、その設定を優先します。"
+                     "同方向・逆方向の候補は調整後の相関の絶対値0.5以上、時間帯による弱まりは"
+                     "調整前の絶対値0.5以上から0.3以上下がり、調整後0.4未満となるペアを取り上げます。"
+                     "多数の組み合わせから選んだ探索的なヒントで、有意差・因果関係・将来の予測を保証しません。"
+                     "下の時間帯調整の切り替えは、グラフに適用されます。")
     st.markdown("#### 相関マップ")
     st.caption("青は同じ方向、茶色は逆方向の動き。薄い色は関係が弱く、空白は件数不足・変化なしです。")
     st.altair_chart(_correlation_chart(corr, counts), use_container_width=True, theme=None)
     if adjust and len(set(wide.index.date)) < 2:
         st.info("時間帯を調整した比較には2日以上のログが必要です。期間を広げるか、調整を外してください。")
 
+    st.markdown('<span id="insight-pair-details"></span>', unsafe_allow_html=True)
     st.markdown("#### ふたつの記録を比べる")
     col1, col2 = st.columns(2)
     with col1:

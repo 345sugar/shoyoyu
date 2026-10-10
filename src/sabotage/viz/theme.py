@@ -88,6 +88,16 @@ def apply_theme() -> None:
     .mpm-meta {font-size:.73rem; color:#6b6c64; margin-top:.25rem; line-height:1.8;}
     .mpm-tag {display:inline-block; font-size:.64rem; padding:.1rem .4rem;
       border:1px solid #cbbd9e; color:#6b542f; margin-left:.4rem; vertical-align:middle;}
+    .mpm-insight {border-top:2px solid #aa8c5c; border-bottom:1px solid #d8d0c3;
+      padding:1.6rem 1.8rem; margin:.4rem 0 .8rem; background:#f1ece2;}
+    .mpm-insight-label {font-size:.61rem; letter-spacing:.19em; color:#756043; margin-bottom:.8rem;}
+    .mpm-insight h3 {font-family:var(--mpm-serif); font-size:1.35rem; font-weight:500;
+      letter-spacing:.05em; line-height:1.6; color:#23343d; padding:0; margin:0 0 .8rem;}
+    .mpm-insight-observation {font-size:.84rem; line-height:1.95; color:#364047; overflow-wrap:anywhere;}
+    .mpm-insight-next {border-left:2px solid #bda57e; margin:1.1rem 0; padding:.1rem 0 .1rem 1rem;}
+    .mpm-insight-next > span {font-size:.68rem; letter-spacing:.07em; color:#765c37;}
+    .mpm-insight-next p {font-size:.82rem; line-height:1.9; color:#283943; margin:.35rem 0 0;}
+    .mpm-insight .mpm-insight-evidence {font-size:.7rem; line-height:1.8; color:#65645b; margin:.8rem 0 0;}
     @media(max-width:700px) {
       .block-container {padding:3.5rem 1rem 2.5rem;}
       .mpm-masthead {padding:1.15rem 0 1rem; margin-bottom:1rem;}
@@ -102,6 +112,8 @@ def apply_theme() -> None:
       .mpm-pick h3 {font-size:1.3rem;}
       .mpm-ride {gap:.85rem;} .mpm-wait {min-width:4rem;}
       .mpm-name {font-size:1rem;} .mpm-credit {font-size:.56rem;}
+      .mpm-insight {padding:1.25rem 1.15rem;}
+      .mpm-insight h3 {font-size:1.18rem;}
     }
     </style>
     """, unsafe_allow_html=True)
