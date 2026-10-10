@@ -26,7 +26,7 @@ import streamlit.components.v1 as components
 from sabotage.analysis import board, crowd, dining, nowcast, outing, queries
 from sabotage.config import DEFAULT_DB_PATH, DEFAULT_INTERVAL_SECONDS, DEFAULT_JITTER_SECONDS
 from sabotage.tools.seed_demo import DEMO_SOURCE, META_DEMO_FLAG
-from sabotage.viz.theme import APP_NAME, apply_theme, hero
+from sabotage.viz.theme import APP_NAME, apply_theme, hero, section_intro
 
 FRESH_LIMIT_MIN = 15  # これを超えて更新が無ければ「古い」警告。
 DEMO_NOW = pd.Timestamp("2026-07-18T14:00:00", tz="Asia/Tokyo")
@@ -197,18 +197,18 @@ def _dining_section(park_df, park_id: str, latest_ts, weather: dict | None) -> N
     current = series[-1] if series else None
     advice = dining.meal_timing(current, series, weather)
 
-    st.markdown("#### 🍽️ 食事どき")
+    st.markdown("#### ひと息つく時間")
     box = {"eat": st.info, "ride": st.success, "rain": st.warning}.get(advice.mode, st.info)
     box(f"**{advice.headline}**\n\n{advice.detail}")
 
     rests = dining.restaurants(park_id, indoor_only=advice.indoor_urgent)
     # 室内→エリア順に。室内フラグを分かりやすく。
     rests = sorted(rests, key=lambda r: (not r.indoor, r.area, r.name))
-    label = "☔️ 室内で座れる店" if advice.indoor_urgent else "🍽️ この園の店(参考)"
+    label = "室内で座れる店（参考）" if advice.indoor_urgent else "レストランのご案内（参考）"
     with st.expander(f"{label}({len(rests)})"):
         html = []
         for r in rests:
-            mark = "🏠室内" if r.indoor else "🌤️屋外"
+            mark = "室内" if r.indoor else "屋外"
             html.append(
                 '<div style="padding:.35rem 0;border-bottom:1px solid rgba(128,128,128,.2)">'
                 f'<div style="font-weight:600">{escape(r.name)}</div>'
@@ -284,7 +284,7 @@ def render(
 ) -> None:
     st.set_page_config(page_title=APP_NAME, page_icon="✨", layout="centered")
     apply_theme()
-    hero("YOUR PARK COMPANION", "待ち時間を減らして、好きな時間を増やそう。")
+    hero("A DAY AT THE PARK", "急がず、楽しむ。\n大人のパーク時間。")
 
     boot = {}
     weather = None
@@ -293,7 +293,7 @@ def render(
     if demo:
         df, names, parks = _demo_data()
         clock = DEMO_NOW
-        st.warning("合成デモ｜2026年7月18日 14:00（日本時間）の架空データです。現在の園内状況ではありません。", icon="🎠")
+        st.warning("合成デモ｜2026年7月18日 14:00（日本時間）の架空データです。現在の園内状況ではありません。")
     else:
         clock = pd.Timestamp.now(tz="Asia/Tokyo")
     if self_poll and not demo:
@@ -354,7 +354,7 @@ def render(
     view_default = qp.get("view", "board")
     view = st.radio(
         "表示", views, index=views.index(view_default) if view_default in views else 0,
-        format_func=lambda value: {"board": "🎢 今日のパーク", "correlations": "🔗 相関をみる"}[value],
+        format_func=lambda value: {"board": "今日のパーク", "correlations": "相関をみる"}[value],
         horizontal=True, key="view_choice",
     )
     _save_query("view", view)
@@ -404,7 +404,7 @@ def render(
     elif weather and not weather_fresh:
         st.caption("天気の更新が古いため、天気に基づく助言は休止しています。")
 
-    st.markdown("#### 今日の気分で絞り込む")
+    section_intro("YOUR DAY, YOUR PACE", "今日の過ごし方", "好きな場所と、心地よく待てる時間から。")
     area_options = sorted(b["area"].dropna().unique().tolist())
     name_options = sorted(b["name"].dropna().unique().tolist())
     area_key, favorite_key = f"area_{park_id}", f"fav_{park_id}"

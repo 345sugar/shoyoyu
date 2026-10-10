@@ -33,6 +33,9 @@ sabotage-backtest = "sabotage.analysis.nowcast:main"
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools.package-data]
+"sabotage.viz" = ["assets/*.jpg"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 # ネットワークに触れるテストは書かない方針。全テストは実形状フィクスチャ駆動。
