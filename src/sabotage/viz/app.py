@@ -131,7 +131,7 @@ def _correlation_chart(corr: pd.DataFrame, counts: pd.DataFrame) -> alt.Chart:
             x=alt.X("x:N", title=None, sort=list(corr.columns),
                     axis=alt.Axis(labelAngle=-45, labelLimit=160)),
             y=alt.Y("y:N", title=None, sort=list(corr.columns),
-                    axis=alt.Axis(labelLimit=200)),
+                    axis=alt.Axis(labelLimit=125, minExtent=130, maxExtent=130)),
             color=alt.Color("r:Q", title="相関 r", scale=alt.Scale(
                 domain=[-1, 0, 1], range=["#e09a4a", "#f0eef5", "#51488a"])),
             tooltip=[alt.Tooltip("x:N", title="項目1"), alt.Tooltip("y:N", title="項目2"),
