@@ -14,6 +14,7 @@ DoD「ブラウザで昨日の園内が見える」を満たす3画面:
 from __future__ import annotations
 
 import argparse
+from contextlib import closing
 import os
 from pathlib import Path
 
@@ -21,9 +22,10 @@ import altair as alt
 import pandas as pd
 import streamlit as st
 
-from sabotage.analysis import crowd, queries
+from sabotage.analysis import correlations, crowd, queries
 from sabotage.config import DEFAULT_DB_PATH
 from sabotage.tools.seed_demo import DEMO_SOURCE, META_DEMO_FLAG
+from sabotage.viz.theme import APP_NAME, apply_theme, hero
 
 
 def _db_path_from_args() -> str:
@@ -110,10 +112,127 @@ def _area_pressure_chart(long: pd.DataFrame) -> alt.Chart:
     )
 
 
+WEATHER_LABELS = {
+    "temp_c": "天気 / 気温 (℃)",
+    "precip_mm": "天気 / 降水量 (mm)",
+    "precip_prob": "予報 / 今後2時間の降水確率 (%)",
+}
+
+
+def _correlation_chart(corr: pd.DataFrame, counts: pd.DataFrame) -> alt.Chart:
+    rows = [
+        {"x": left, "y": right, "r": corr.loc[left, right],
+         "n": int(counts.loc[left, right])}
+        for left in corr.columns for right in corr.columns
+    ]
+    frame = pd.DataFrame(rows)
+    return (
+        alt.Chart(frame).mark_rect(cornerRadius=3).encode(
+            x=alt.X("x:N", title=None, sort=list(corr.columns),
+                    axis=alt.Axis(labelAngle=-45, labelLimit=160)),
+            y=alt.Y("y:N", title=None, sort=list(corr.columns),
+                    axis=alt.Axis(labelLimit=125, minExtent=130, maxExtent=130)),
+            color=alt.Color("r:Q", title="相関 r", scale=alt.Scale(
+                domain=[-1, 0, 1], range=["#e09a4a", "#f0eef5", "#51488a"])),
+            tooltip=[alt.Tooltip("x:N", title="項目1"), alt.Tooltip("y:N", title="項目2"),
+                     alt.Tooltip("r:Q", title="相関 r", format=".2f"),
+                     alt.Tooltip("n:Q", title="共通観測 (時間)")],
+        ).properties(height=max(250, 35 * len(corr.columns)))
+    )
+
+
+def _scatter_chart(samples: pd.DataFrame, left: str, right: str, *, adjusted: bool) -> alt.Chart:
+    frame = samples.rename(columns={left: "x", right: "y"}).copy()
+    frame["時刻"] = frame.index.strftime("%Y-%m-%d %H:%M JST")
+    suffix = " · 時間帯平均との差" if adjusted else " · 1時間平均"
+    return (
+        alt.Chart(frame.reset_index(drop=True)).mark_circle(size=65, opacity=.65, color="#6454a4")
+        .encode(
+            x=alt.X("x:Q", title=left + suffix, scale=alt.Scale(zero=False)),
+            y=alt.Y("y:Q", title=right + suffix, scale=alt.Scale(zero=False)),
+            tooltip=["時刻:N", alt.Tooltip("x:Q", title=left, format=".2f"),
+                     alt.Tooltip("y:Q", title=right, format=".2f")],
+        ).properties(height=330).interactive()
+    )
+
+
+def _correlation_section(park_df: pd.DataFrame, weather_df: pd.DataFrame) -> None:
+    st.subheader("一緒に混む？ 雨の日は変わる？")
+    st.caption("同じ時間に記録されたログを重ねて、待ち時間と天気の関係を探します。")
+    days = queries.available_dates(park_df)
+    period = st.date_input(
+        "分析する期間", value=(days[-1], days[0]), min_value=days[-1], max_value=days[0],
+        key=f"corr_period_{park_df['park_id'].iloc[0]}",
+    )
+    if not isinstance(period, (tuple, list)) or len(period) != 2:
+        st.info("開始日と終了日を選んでください。")
+        return
+    observations = park_df[park_df["date"].between(period[0], period[1])]
+    waits = correlations.hourly_waits(observations)
+    if waits.empty:
+        st.info("選んだ期間に、運営中の待ち時間データがありません。")
+        return
+    names = list(waits.columns)
+    selected = st.multiselect("比べるアトラクション", names, default=names[:6],
+                              key=f"corr_rides_{park_df['park_id'].iloc[0]}")
+    if len(selected) > 12:
+        st.info("グラフを読みやすくするため、12施設以内で選んでください。")
+        return
+    wide = waits[selected]
+    weather = correlations.hourly_weather(weather_df)
+    weather_available = not weather.empty and not weather.reindex(waits.index).dropna(how="all").empty
+    include_weather = st.checkbox("気温・雨との関係も比べる", value=False,
+                                  disabled=not weather_available)
+    if include_weather and weather_available:
+        available = weather.dropna(axis=1, how="all").rename(columns=WEATHER_LABELS)
+        wide = wide.join(available, how="left")
+        st.caption("降水確率は取得時点から今後2時間の最大予報です。実際に降った雨とは区別して見てください。")
+    elif not weather_available:
+        st.caption("この期間の天気ログはありません。待ち時間どうしを比較できます。")
+    adjust = st.checkbox("時間帯の影響を調整する", value=True,
+                         help="共通観測だけで各時間帯の平均を引きます。昼の混雑などの影響を抑えます。")
+    min_pairs = st.slider("比較に必要な共通観測数（時間）", 10, 100, 10, 5)
+    if len(wide.columns) < 2:
+        st.info("比較する項目を2つ以上選んでください。")
+        return
+    corr, counts, _ = correlations.analyze(wide, adjust_hour=adjust, min_pairs=min_pairs)
+    st.markdown("#### 相関マップ")
+    st.caption("紫は同じ方向、オレンジは逆方向の動き。薄い色は関係が弱く、空白は件数不足・変化なしです。")
+    st.altair_chart(_correlation_chart(corr, counts), use_container_width=True)
+    if adjust and len(set(wide.index.date)) < 2:
+        st.info("時間帯を調整した比較には2日以上のログが必要です。期間を広げるか、調整を外してください。")
+
+    st.markdown("#### 組み合わせを詳しく")
+    col1, col2 = st.columns(2)
+    with col1:
+        left = st.selectbox("項目1", list(wide.columns), key="corr_left")
+    with col2:
+        right = st.selectbox("項目2", [c for c in wide.columns if c != left], key="corr_right")
+    raw_corr, _, _ = correlations.analyze(wide[[left, right]], min_pairs=min_pairs)
+    adjusted_corr, _, _ = correlations.analyze(wide[[left, right]], adjust_hour=True, min_pairs=min_pairs)
+    metrics = st.columns(3)
+    raw_r, adjusted_r = raw_corr.loc[left, right], adjusted_corr.loc[left, right]
+    metrics[0].metric("そのままの相関", "—" if pd.isna(raw_r) else f"{raw_r:+.2f}")
+    metrics[1].metric("時間帯を調整", "—" if pd.isna(adjusted_r) else f"{adjusted_r:+.2f}")
+    metrics[2].metric("共通観測", f"{int(counts.loc[left, right])} 時間")
+    samples = correlations.paired_samples(wide, left, right, adjust_hour=adjust)
+    selected_r = corr.loc[left, right]
+    if pd.isna(selected_r):
+        st.info("この組み合わせは観測数・日数が足りないか、値に変化がないため相関を表示できません。")
+    else:
+        st.altair_chart(_scatter_chart(samples, left, right, adjusted=adjust), use_container_width=True)
+    with st.expander("計算方法とデータ件数"):
+        st.write("1時間の平均値どうしを同時刻で突合したPearson相関です。欠測を補完せず、"
+                 "時間帯調整の平均も各ペアに共通する観測だけから計算しています。")
+        st.dataframe(counts, use_container_width=True)
+    st.caption("相関は因果関係ではありません。曜日・季節・運休・営業時間などの影響は残ります。"
+               "連続する時間の記録は独立ではなく、件数が多くても因果を示すものではありません。")
+
+
 def render(db_path: str) -> None:
-    st.set_page_config(page_title="sabotage — 昨日の園内", page_icon="🏰", layout="wide")
-    st.title("🏰 sabotage — 昨日の園内")
-    st.caption("東京ディズニーリゾートの待ち時間ログ可視化(Phase 1)")
+    st.set_page_config(page_title=f"{APP_NAME} · Park Stories", page_icon="🐭", layout="wide")
+    apply_theme()
+    hero("PARK STORIES / ログを振り返る", "パークの一日を振り返って、次のお出かけをもっと気ままに。")
 
     if not Path(db_path).exists():
         st.error(f"DB が見つかりません: `{db_path}`")
@@ -124,16 +243,16 @@ def render(db_path: str) -> None:
         )
         return
 
-    conn = queries.connect(db_path)
-    _provenance_banner(conn)
-
-    df = queries.load_observations(conn)
+    with closing(queries.connect(db_path)) as conn:
+        _provenance_banner(conn)
+        df = queries.load_observations(conn)
+        weather_df = queries.load_weather(conn)
+        names = queries.park_names(conn)
+        parks = queries.available_parks(conn)
     if df.empty:
         st.info("観測データがまだありません(欠測のみ、または空)。")
         return
 
-    names = queries.park_names(conn)
-    parks = queries.available_parks(conn)
     if not parks:
         st.info("表示できるパークがありません。")
         return
@@ -149,7 +268,7 @@ def render(db_path: str) -> None:
         if not dates:
             st.info("この日付に観測がありません。")
             return
-        target_date = st.selectbox("日付", dates, format_func=str)
+        target_date = st.selectbox("波形を見る日", dates, format_func=str)
 
         attractions = sorted(
             park_df[(park_df["entity_type"] == "ATTRACTION")]["name"].dropna().unique()
@@ -157,7 +276,18 @@ def render(db_path: str) -> None:
         default_sel = attractions[: min(6, len(attractions))]
         selected = st.multiselect("アトラクション(波形用)", attractions, default=default_sel)
 
-    st.subheader(f"{names.get(park_id, park_id)} — {target_date}")
+    st.subheader(names.get(park_id, park_id))
+    correlation_tab, history_tab = st.tabs(["🔗 相関をみる", "📈 一日のログ"])
+    with correlation_tab:
+        _correlation_section(park_df, weather_df)
+    with history_tab:
+        _history_section(park_df, target_date, selected)
+    st.divider()
+    st.caption("データ元: ThemeParks.wiki / 天気ログがある場合はOpen-Meteo。非公式・私的利用。")
+
+
+def _history_section(park_df: pd.DataFrame, target_date, selected: list[str]) -> None:
+    st.caption(f"{target_date} の記録")
 
     # --- 1. 待ち時間波形 ---
     st.markdown("### ⏱ 待ち時間波形(選択日)")
@@ -197,13 +327,6 @@ def render(db_path: str) -> None:
                 pd.Timestamp(peak["ts_local"]).strftime("%H:%M"),
                 help="この日の待ち時間総和が最大だった時刻。",
             )
-
-    st.divider()
-    st.caption(
-        "データ元: ThemeParks.wiki(非公式・私的利用)。"
-        "Queue-Times のデータは本画面では未使用のため表記は不要。"
-    )
-
 
 def main() -> None:
     render(_db_path_from_args())

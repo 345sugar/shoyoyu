@@ -20,7 +20,7 @@ import math
 
 import pandas as pd
 
-from .board import STOP_STATUSES, current_board
+from .board import current_board
 
 ATTRACTION = "ATTRACTION"
 DEFAULT_TAU_MIN = 30.0        # 群衆弾性。乖離が 1/e に薄れるまでの分。まずは全アトラクション共通。
@@ -43,7 +43,7 @@ def herd_adjusted_value(
     - momentum : 平常値が無い → 現在 + 傾き×Δ。
     - flat     : どちらも無い → 現状維持。
     """
-    if current is None:
+    if current is None or pd.isna(current) or not math.isfinite(current) or current < 0:
         return None, "none"
 
     if typical_now is not None and typical_arrival is not None:
@@ -103,8 +103,13 @@ def predict_board(
     *,
     arrival_min: float = DEFAULT_ARRIVAL_MIN,
     tau: float = DEFAULT_TAU_MIN,
+    now: pd.Timestamp | None = None,
 ) -> pd.DataFrame:
-    """現況ボードに到着時予測を足す。current_board の列 + pred_wait/pred_method/pred_delta/signal。"""
+    """現況ボードに到着時予測を足す。
+
+    now を指定すると観測からの経過分を予測時間に足し、「今から arrival_min 分後」を
+    予測する。未指定なら従来通り観測時刻が基準。古い観測の表示可否は呼び出し側で判定する。
+    """
     board = current_board(df, park_id)
     if board.empty:
         board["pred_wait"] = []
@@ -114,17 +119,27 @@ def predict_board(
         return board
 
     latest_ts = pd.Timestamp(board["ts_local"].iloc[0])
-    arrival_hour = int((latest_ts + pd.Timedelta(minutes=arrival_min)).hour)
+    horizon = arrival_min
+    if now is not None:
+        reference = pd.Timestamp(now)
+        if pd.isna(reference):
+            raise ValueError("now must be a valid timestamp")
+        if reference.tzinfo is None and latest_ts.tzinfo is not None:
+            reference = reference.tz_localize(latest_ts.tzinfo)
+        elif reference.tzinfo is not None and latest_ts.tzinfo is None:
+            reference = reference.tz_convert("Asia/Tokyo").tz_localize(None)
+        horizon += max(0.0, (reference - latest_ts).total_seconds() / 60.0)
+    arrival_hour = int((latest_ts + pd.Timedelta(minutes=horizon)).hour)
 
     hist = df[(df["park_id"] == park_id) & (df["entity_type"] == ATTRACTION)]
 
     preds, methods, deltas, signals = [], [], [], []
     for _, row in board.iterrows():
-        # 停止・休止は予測しない。
-        if row["status"] in STOP_STATUSES:
+        # 停止・休止・未知の状態では予測しない。
+        if pd.isna(row["status"]) or row["status"] != "OPERATING":
             preds.append(None); methods.append(None); deltas.append(None); signals.append(None)
             continue
-        cur = row["wait_minutes"]
+        cur = row["wait_minutes"] if pd.notna(row["wait_minutes"]) else None
         # entity_id を board は持たないので name で引く(current_board は名前一意前提)。
         sub = hist[hist["name"] == row["name"]].sort_values("ts_local")
         typ = _typical_by_hour(sub)
@@ -132,7 +147,7 @@ def predict_board(
         typ_arr = float(typ.loc[arrival_hour]) if arrival_hour in typ.index else None
         slope = _recent_slope(sub)
         pred, method = herd_adjusted_value(
-            cur, typ_now, typ_arr, slope, arrival_min, tau=tau
+            cur, typ_now, typ_arr, slope, horizon, tau=tau
         )
         preds.append(pred)
         methods.append(method)

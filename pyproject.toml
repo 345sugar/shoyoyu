@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "sabotage"
 version = "0.1.0"
-description = "効率よくだらだらディズニー執事 — Phase 0: データフライホイール(ポーラー+SQLite蓄積)"
+description = "Mouse Park Magic — Less waiting. More magic. 東京ディズニーリゾートの待ち時間ログ・到着時予測ダッシュボード"
 requires-python = ">=3.11"
 dependencies = [
     "httpx>=0.27",
