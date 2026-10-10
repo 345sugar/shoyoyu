@@ -25,7 +25,7 @@ import streamlit as st
 from sabotage.analysis import correlations, crowd, queries
 from sabotage.config import DEFAULT_DB_PATH
 from sabotage.tools.seed_demo import DEMO_SOURCE, META_DEMO_FLAG
-from sabotage.viz.theme import APP_NAME, apply_theme, hero
+from sabotage.viz.theme import APP_NAME, apply_theme, hero, section_intro
 
 
 def _db_path_from_args() -> str:
@@ -133,7 +133,7 @@ def _correlation_chart(corr: pd.DataFrame, counts: pd.DataFrame) -> alt.Chart:
             y=alt.Y("y:N", title=None, sort=list(corr.columns),
                     axis=alt.Axis(labelLimit=125, minExtent=130, maxExtent=130)),
             color=alt.Color("r:Q", title="相関 r", scale=alt.Scale(
-                domain=[-1, 0, 1], range=["#e09a4a", "#f0eef5", "#51488a"])),
+                domain=[-1, 0, 1], range=["#AE765A", "#F3EFE8", "#223D4A"])),
             tooltip=[alt.Tooltip("x:N", title="項目1"), alt.Tooltip("y:N", title="項目2"),
                      alt.Tooltip("r:Q", title="相関 r", format=".2f"),
                      alt.Tooltip("n:Q", title="共通観測 (時間)")],
@@ -146,7 +146,7 @@ def _scatter_chart(samples: pd.DataFrame, left: str, right: str, *, adjusted: bo
     frame["時刻"] = frame.index.strftime("%Y-%m-%d %H:%M JST")
     suffix = " · 時間帯平均との差" if adjusted else " · 1時間平均"
     return (
-        alt.Chart(frame.reset_index(drop=True)).mark_circle(size=65, opacity=.65, color="#6454a4")
+        alt.Chart(frame.reset_index(drop=True)).mark_circle(size=65, opacity=.65, color="#223D4A")
         .encode(
             x=alt.X("x:Q", title=left + suffix, scale=alt.Scale(zero=False)),
             y=alt.Y("y:Q", title=right + suffix, scale=alt.Scale(zero=False)),
@@ -157,8 +157,10 @@ def _scatter_chart(samples: pd.DataFrame, left: str, right: str, *, adjusted: bo
 
 
 def _correlation_section(park_df: pd.DataFrame, weather_df: pd.DataFrame) -> None:
-    st.subheader("一緒に混む？ 雨の日は変わる？")
-    st.caption("同じ時間に記録されたログを重ねて、待ち時間と天気の関係を探します。")
+    section_intro(
+        "THE PATTERNS", "混雑のつながりを読む",
+        "アトラクションと天気の記録から、待ち時間の傾向を見つけます。",
+    )
     days = queries.available_dates(park_df)
     period = st.date_input(
         "分析する期間", value=(days[-1], days[0]), min_value=days[-1], max_value=days[0],
@@ -197,12 +199,12 @@ def _correlation_section(park_df: pd.DataFrame, weather_df: pd.DataFrame) -> Non
         return
     corr, counts, _ = correlations.analyze(wide, adjust_hour=adjust, min_pairs=min_pairs)
     st.markdown("#### 相関マップ")
-    st.caption("紫は同じ方向、オレンジは逆方向の動き。薄い色は関係が弱く、空白は件数不足・変化なしです。")
-    st.altair_chart(_correlation_chart(corr, counts), use_container_width=True)
+    st.caption("青は同じ方向、茶色は逆方向の動き。薄い色は関係が弱く、空白は件数不足・変化なしです。")
+    st.altair_chart(_correlation_chart(corr, counts), use_container_width=True, theme=None)
     if adjust and len(set(wide.index.date)) < 2:
         st.info("時間帯を調整した比較には2日以上のログが必要です。期間を広げるか、調整を外してください。")
 
-    st.markdown("#### 組み合わせを詳しく")
+    st.markdown("#### ふたつの記録を比べる")
     col1, col2 = st.columns(2)
     with col1:
         left = st.selectbox("項目1", list(wide.columns), key="corr_left")
@@ -220,7 +222,7 @@ def _correlation_section(park_df: pd.DataFrame, weather_df: pd.DataFrame) -> Non
     if pd.isna(selected_r):
         st.info("この組み合わせは観測数・日数が足りないか、値に変化がないため相関を表示できません。")
     else:
-        st.altair_chart(_scatter_chart(samples, left, right, adjusted=adjust), use_container_width=True)
+        st.altair_chart(_scatter_chart(samples, left, right, adjusted=adjust), use_container_width=True, theme=None)
     with st.expander("計算方法とデータ件数"):
         st.write("1時間の平均値どうしを同時刻で突合したPearson相関です。欠測を補完せず、"
                  "時間帯調整の平均も各ペアに共通する観測だけから計算しています。")
@@ -232,7 +234,7 @@ def _correlation_section(park_df: pd.DataFrame, weather_df: pd.DataFrame) -> Non
 def render(db_path: str) -> None:
     st.set_page_config(page_title=f"{APP_NAME} · Park Stories", page_icon="🐭", layout="wide")
     apply_theme()
-    hero("PARK STORIES / ログを振り返る", "パークの一日を振り返って、次のお出かけをもっと気ままに。")
+    hero("THE PARK JOURNAL", "一日の記録を、次のお出かけのヒントに。")
 
     if not Path(db_path).exists():
         st.error(f"DB が見つかりません: `{db_path}`")
@@ -277,7 +279,7 @@ def render(db_path: str) -> None:
         selected = st.multiselect("アトラクション(波形用)", attractions, default=default_sel)
 
     st.subheader(names.get(park_id, park_id))
-    correlation_tab, history_tab = st.tabs(["🔗 相関をみる", "📈 一日のログ"])
+    correlation_tab, history_tab = st.tabs(["相関をみる", "一日のログ"])
     with correlation_tab:
         _correlation_section(park_df, weather_df)
     with history_tab:
@@ -290,7 +292,7 @@ def _history_section(park_df: pd.DataFrame, target_date, selected: list[str]) ->
     st.caption(f"{target_date} の記録")
 
     # --- 1. 待ち時間波形 ---
-    st.markdown("### ⏱ 待ち時間波形(選択日)")
+    st.markdown("### 一日の待ち時間")
     wave = crowd.waveform(park_df, target_date, names=selected or None)
     if wave.empty:
         st.info("この日の待ち時間データがありません。")
@@ -300,11 +302,12 @@ def _history_section(park_df: pd.DataFrame, target_date, selected: list[str]) ->
     # --- 停止/改修(木鶏の材料) ---
     disruptions = crowd.current_disruptions(park_df, target_date)
     if not disruptions.empty:
-        with st.expander(f"🛑 この日の停止・改修・休止({len(disruptions)}件)"):
+        with st.expander(f"この日の停止・改修・休止({len(disruptions)}件)"):
             st.dataframe(disruptions, use_container_width=True, hide_index=True)
 
     # --- 2. 曜日×時間帯ヒートマップ ---
-    st.markdown("### 📅 曜日 × 時間帯 ヒートマップ(全期間平均)")
+    st.markdown("### 曜日と時間帯の傾向")
+    st.caption("記録された全期間の平均待ち時間です。")
     heat = crowd.heatmap_long(park_df, names=selected or None)
     if heat.empty:
         st.info("ヒートマップに十分なデータがありません。")
@@ -312,8 +315,8 @@ def _history_section(park_df: pd.DataFrame, target_date, selected: list[str]) ->
         st.altair_chart(_heatmap_chart(heat), use_container_width=True)
 
     # --- 3. 人圧マップ ---
-    st.markdown("### 🌊 人圧マップ(待ち時間総和=園内需要の相対指標)")
-    st.caption("絶対人数ではなく相対値。エリア別に「どこが厚いか」を見る(網を張る位置の目安)。")
+    st.markdown("### エリアごとの混雑傾向")
+    st.caption("各エリアの待ち時間の合計を比べています。園内の人数を示すものではありません。")
     by_area = crowd.crowd_pressure_by_area(park_df, target_date)
     if by_area.empty:
         st.info("人圧を計算できるデータがありません。")

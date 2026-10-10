@@ -87,7 +87,7 @@ def test_stale_demo_observations_suppress_pick_and_meal_advice(monkeypatch):
     assert not at.exception
     assert any("移動候補と食事どきの提案を止めています" in item.value for item in at.warning)
     assert not any('<div class="mpm-pick">' in item.value for item in at.markdown)
-    assert not any("#### 🍽️ 食事どき" in item.value for item in at.markdown)
+    assert not any("#### ひと息つく時間" in item.value for item in at.markdown)
     assert any("過去の観測を使った参考一覧" in item.value for item in at.markdown)
 
 
