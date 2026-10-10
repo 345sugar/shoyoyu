@@ -107,6 +107,48 @@ def test_predict_board_empty_safe():
     assert "pred_wait" in b.columns
 
 
+def test_predict_board_missing_wait_and_unknown_status_do_not_crash_or_predict():
+    df = _df([
+        ("2026-07-17T14:00:00", "known", "Known", "OPERATING", 30),
+        ("2026-07-17T14:00:00", "missing", "Missing", "OPERATING", None),
+        ("2026-07-17T14:00:00", "unknown", "Unknown", "UNKNOWN", 5),
+    ])
+    board = nowcast.predict_board(df, TDL).set_index("name")
+    assert board.loc["Known", "pred_wait"] == 30
+    assert pd.isna(board.loc["Missing", "pred_wait"])
+    assert pd.isna(board.loc["Unknown", "pred_wait"])
+    assert nowcast.herd_adjusted_value(float("nan"), None, None, None, 20) == (None, "none")
+
+
+def test_now_adds_observation_age_to_arrival_horizon():
+    df = _df([
+        ("2026-07-17T14:00:00", "e1", "Ride", "OPERATING", 20),
+        ("2026-07-17T14:05:00", "e1", "Ride", "OPERATING", 25),
+    ])
+    # 1分あたり+1分。14:10の画面で「10分後」なら14:20を予測する。
+    current = nowcast.predict_board(
+        df, TDL, arrival_min=10, now=pd.Timestamp("2026-07-17T14:10:00", tz="Asia/Tokyo")
+    )
+    observed = nowcast.predict_board(df, TDL, arrival_min=10)
+    assert current.iloc[0]["pred_wait"] == 40
+    assert observed.iloc[0]["pred_wait"] == 35
+
+
+def test_now_horizon_crosses_into_the_arrival_hour():
+    historical = [
+        (f"2026-07-{d:02d}T14:00:00", "e1", "Ride", "OPERATING", 30)
+        for d in range(12, 16)
+    ] + [
+        (f"2026-07-{d:02d}T15:00:00", "e1", "Ride", "OPERATING", 60)
+        for d in range(12, 16)
+    ]
+    df = _df(historical + [("2026-07-17T14:40:00", "e1", "Ride", "OPERATING", 30)])
+    result = nowcast.predict_board(
+        df, TDL, arrival_min=10, now=pd.Timestamp("2026-07-17T14:55:00", tz="Asia/Tokyo")
+    )
+    assert result.iloc[0]["pred_wait"] == 60
+
+
 # --- backtest ---------------------------------------------------------------
 
 

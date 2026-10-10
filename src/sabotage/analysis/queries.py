@@ -129,3 +129,16 @@ def latest_weather(conn: sqlite3.Connection) -> dict | None:
     except sqlite3.OperationalError:
         return None  # weather テーブル未作成の旧 DB。
     return dict(row) if row else None
+
+
+def load_weather(conn: sqlite3.Connection) -> pd.DataFrame:
+    """Read stored weather history, without fetching anything from the network."""
+    columns = ["ts", "http_status", "temp_c", "precip_mm", "precip_prob"]
+    exists = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='weather'"
+    ).fetchone()
+    if not exists:
+        return pd.DataFrame(columns=columns)
+    return pd.read_sql_query(
+        "SELECT ts, http_status, temp_c, precip_mm, precip_prob FROM weather ORDER BY ts", conn
+    )
