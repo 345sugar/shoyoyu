@@ -24,9 +24,11 @@ import streamlit as st
 import streamlit.components.v1 as components
 
 from sabotage.analysis import board, crowd, dining, nowcast, outing, queries
+from sabotage.analysis.outing_insights import outing_insights
 from sabotage.config import DEFAULT_DB_PATH, DEFAULT_INTERVAL_SECONDS, DEFAULT_JITTER_SECONDS
 from sabotage.tools.seed_demo import DEMO_SOURCE, META_DEMO_FLAG
 from sabotage.viz.theme import APP_NAME, apply_theme, hero, section_intro
+from sabotage.viz.insight_cards import render_insights
 
 FRESH_LIMIT_MIN = 15  # これを超えて更新が無ければ「古い」警告。
 DEMO_NOW = pd.Timestamp("2026-07-18T14:00:00", tz="Asia/Tokyo")
@@ -366,6 +368,7 @@ def render(
         st.caption("合成デモデータ使用" if demo else "データ元: ThemeParks.wiki（非公式・私的利用）")
         return
 
+    daily_hint_slot = st.container()
     try:
         arr_default = int(qp.get("arr", nowcast.DEFAULT_ARRIVAL_MIN))
     except (TypeError, ValueError):
@@ -425,6 +428,8 @@ def render(
         max_wait=None if max_wait == "全て" else max_wait,
     )
     st.caption("絞り込みはURLに保存されます。ブックマークすると次回も同じ条件で開けます。")
+    with daily_hint_slot:
+        render_insights(outing_insights(chosen, fresh=fresh, arrival_min=arrival_min), daily=True)
     columns = st.columns(3)
     columns[0].metric("運営中", f"{int((b['status'] == 'OPERATING').sum())}件")
     columns[1].metric("条件に合う候補", f"{len(chosen)}件")

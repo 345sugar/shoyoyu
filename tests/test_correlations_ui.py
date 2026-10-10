@@ -131,3 +131,43 @@ def test_chart_builders_serialize_null_correlations_and_jst_time():
     scatter = app._scatter_chart(samples, "A", "B", adjusted=True).to_dict()
     assert "時間帯平均との差" in scatter["encoding"]["x"]["title"]
     assert next(iter(scatter["datasets"].values()))[0]["時刻"] == "2026-07-18 09:00 JST"
+
+
+def test_insight_button_selects_its_actual_pair(monkeypatch):
+    reports = []
+    original = app.insights.correlation_insights
+
+    def record(*args, **kwargs):
+        report = original(*args, **kwargs)
+        reports.append(report)
+        return report
+
+    monkeypatch.setattr(app.insights, "correlation_insights", record)
+    at = AppTest.from_function(_render_demo).run(timeout=30)
+    assert not at.exception
+    report = reports[-1]
+    assert report[0].left and report[0].right
+    at.button(key="insight_pair_1").click().run(timeout=30)
+    assert not at.exception
+    assert at.selectbox(key="corr_left").value == report[0].left
+    assert at.selectbox(key="corr_right").value == report[0].right
+    assert any("選択した2項目のグラフへ" in item.value for item in at.markdown)
+    assert "共通観測" in report[0].evidence
+    assert any("記録から見つけるヒント" in item.value for item in at.markdown)
+
+
+def test_insight_card_escapes_untrusted_names_and_evidence():
+    def render_untrusted():
+        from sabotage.analysis.insights import Insight
+        from sabotage.viz.insight_cards import render_insights
+        render_insights([Insight(
+            "positive", '<img src=x onerror="bad">', '<script>bad()</script>',
+            'A & B', '<svg onload="bad">',
+        )])
+
+    at = AppTest.from_function(render_untrusted).run(timeout=20)
+    assert not at.exception
+    card = next(item.value for item in at.markdown if 'class="mpm-insight"' in item.value)
+    assert "<script>" not in card and "<img" not in card and "<svg" not in card
+    assert "&lt;script&gt;" in card and "&lt;img" in card and "&lt;svg" in card
+    assert "A &amp; B" in card
