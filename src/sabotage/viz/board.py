@@ -14,6 +14,7 @@ from __future__ import annotations
 import argparse
 import math
 import os
+import random
 import threading
 from contextlib import closing
 from html import escape
@@ -23,7 +24,7 @@ import pandas as pd
 import streamlit as st
 import streamlit.components.v1 as components
 
-from sabotage.analysis import board, crowd, dining, nowcast, outing, queries
+from sabotage.analysis import board, crowd, dining, nowcast, outing, queries, serendipity
 from sabotage.analysis.outing_insights import outing_insights
 from sabotage.config import DEFAULT_DB_PATH, DEFAULT_INTERVAL_SECONDS, DEFAULT_JITTER_SECONDS
 from sabotage.tools.seed_demo import DEMO_SOURCE, META_DEMO_FLAG
@@ -223,6 +224,41 @@ def _dining_section(park_df, park_id: str, latest_ts, weather: dict | None) -> N
             "※ 店は参考データ(改装・営業変更あり得る)。待ち時間・空席・メニューは"
             "非公式APIに無いため非提供。"
         )
+
+
+def _serendipity_section(predicted_board: pd.DataFrame, latest_ts) -> None:
+    """🦋 ふらりと寄り道(鯤の余白)。今いつもより空いている穴場をひとつだけ誘う。
+
+    号令ではなく誘い(level-2)。偶然の風は観測時刻で seed し、短時間は安定・時間が進むと
+    変わるようにする。平常より空いた場所が無ければ、同点stay で「無理に動かない」を出す。
+    """
+    try:
+        seed = int(pd.Timestamp(latest_ts).value // (10**9 * 60))  # 分粒度で安定
+    except Exception:  # noqa: BLE001
+        seed = 0
+    pick = serendipity.serendipity_pick(predicted_board, rng=random.Random(seed))
+
+    st.markdown("#### ふらりと寄り道")
+    if pick is None:
+        st.caption(
+            "いまは全体がいつも通り。無理に動かず、今いる場所でゆっくりするのが得な時間です。"
+        )
+        return
+
+    pred_line = (
+        f" · 到着時の予測待ち <strong>{pick.pred_wait}分</strong>"
+        if pick.pred_wait is not None
+        else ""
+    )
+    area = f"{escape(pick.area)} · " if pick.area else ""
+    st.markdown(
+        '<div class="mpm-pick"><div class="mpm-label">今だけの空き — 予定を少し崩す価値あり</div>'
+        f'<h3>{escape(pick.name)}</h3>'
+        f'<p>{area}いつもは約{pick.typical}分のところ、今は<strong>{pick.wait}分</strong>'
+        f'(いつもより約{pick.saved}分空いています){pred_line}。</p>'
+        '<p>行くか行かないかはお好みで。寄り道が今日の思い出になるかもしれません。</p></div>',
+        unsafe_allow_html=True,
+    )
 
 
 def _row(r, *, favorite: bool = False) -> str:
@@ -473,6 +509,11 @@ def render(
         with st.expander(f"停止・状態不明・予測なし（{len(unavailable)}件）"):
             html = "".join(_row(r) for _, r in unavailable.iterrows())
             st.markdown(html, unsafe_allow_html=True)
+
+    st.divider()
+    # 🦋 ふらりと寄り道(鯤の余白)。今いつもより空いている穴場をひとつ誘う。
+    if fresh:
+        _serendipity_section(b, latest)
 
     st.divider()
     # 🍽️ 食事どき(人圧+天気で「食べ時/室内へ」。店は参考データ)。
