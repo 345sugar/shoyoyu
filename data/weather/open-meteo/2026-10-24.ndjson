@@ -1,0 +1,1 @@
+{"ts": "2026-10-24T00:30:00Z", "source": "open-meteo", "location_id": "maihama", "http_status": 503, "raw": {"reason": "The service is overloaded", "error": true}, "ok": false, "error": "HTTP 503"}
